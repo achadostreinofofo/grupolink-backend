@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN cpf VARCHAR(14);
+CREATE UNIQUE INDEX idx_users_cpf ON users (cpf) WHERE cpf IS NOT NULL;
