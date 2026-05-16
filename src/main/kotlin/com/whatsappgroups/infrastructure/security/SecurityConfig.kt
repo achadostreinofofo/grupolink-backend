@@ -41,6 +41,7 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/auth/**").permitAll()
+                    .requestMatchers("/api/security/public-key").permitAll()
                     .requestMatchers(HttpMethod.GET, "/r/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/s/**").permitAll()
                     .requestMatchers("/api/webhooks/**").permitAll()

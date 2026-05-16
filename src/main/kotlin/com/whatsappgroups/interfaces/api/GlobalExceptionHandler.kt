@@ -1,11 +1,12 @@
 package com.whatsappgroups.interfaces.api
 
-import com.whatsappgroups.application.usecase.auth.EmailAlreadyExistsException
+import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import java.security.GeneralSecurityException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -16,11 +17,11 @@ class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(mapOf("errors" to errors))
     }
 
-    @ExceptionHandler(EmailAlreadyExistsException::class)
-    fun handleEmailExists(ex: EmailAlreadyExistsException): ResponseEntity<Map<String, String>> =
+    @ExceptionHandler(CpfAlreadyExistsException::class)
+    fun handleCpfExists(ex: CpfAlreadyExistsException): ResponseEntity<Map<String, String>> =
         ResponseEntity.status(HttpStatus.CONFLICT).body(mapOf(
-            "error" to "EMAIL_ALREADY_EXISTS",
-            "message" to "Já existe uma conta cadastrada com este e-mail."
+            "error" to "CPF_ALREADY_EXISTS",
+            "message" to "Já existe uma conta cadastrada com este CPF."
         ))
 
     @ExceptionHandler(IllegalArgumentException::class)
@@ -38,4 +39,13 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException::class)
     fun handleIllegalState(ex: IllegalStateException): ResponseEntity<Map<String, String>> =
         ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mapOf("error" to (ex.message ?: "Serviço indisponível")))
+
+    // RSA decryption failures — most likely cause: stale public key cached in the browser
+    // The frontend must re-fetch /api/security/public-key and retry.
+    @ExceptionHandler(GeneralSecurityException::class)
+    fun handleCryptoError(ex: GeneralSecurityException): ResponseEntity<Map<String, String>> =
+        ResponseEntity.badRequest().body(mapOf(
+            "error" to "ENCRYPTION_KEY_EXPIRED",
+            "message" to "Chave de criptografia expirada. Recarregue a página e tente novamente."
+        ))
 }
