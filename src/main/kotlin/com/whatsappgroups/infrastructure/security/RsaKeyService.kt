@@ -7,7 +7,7 @@ import java.security.spec.MGF1ParameterSpec
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
-import java.security.spec.PSource
+import javax.crypto.spec.PSource
 
 // Web Crypto API (browser) uses RSA-OAEP with SHA-256 for BOTH the content hash AND MGF1.
 // Java's "OAEPWithSHA-256AndMGF1Padding" shorthand uses SHA-1 for MGF1 by default,
