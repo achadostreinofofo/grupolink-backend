@@ -55,6 +55,9 @@ dependencies {
     // RabbitMQ
     implementation("org.springframework.boot:spring-boot-starter-amqp")
 
+    // Email
+    implementation("org.springframework.boot:spring-boot-starter-mail")
+
     // Testes
     testImplementation("org.testcontainers:junit-jupiter:1.19.8")
     testImplementation("org.testcontainers:rabbitmq:1.19.8")

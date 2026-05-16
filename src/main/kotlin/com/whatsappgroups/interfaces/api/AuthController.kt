@@ -5,8 +5,6 @@ import com.whatsappgroups.application.dto.LoginRequest
 import com.whatsappgroups.application.dto.SignUpRequest
 import com.whatsappgroups.application.usecase.auth.AuthUseCase
 import com.whatsappgroups.domain.repository.UserRepository
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -16,7 +14,7 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
 
-@Tag(name = "Autenticação", description = "Signup, login e perfil do usuário")
+@Tag(name = "Autenticação", description = "Signup, login, perfil e verificação de e-mail")
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
@@ -39,13 +37,28 @@ class AuthController(
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
 
         return ResponseEntity.ok(mapOf(
-            "id" to user.id,
-            "email" to user.email,
-            "name" to user.name,
-            "cpf" to user.cpf,
-            "plan" to user.plan.name,
+            "id"                 to user.id,
+            "email"              to user.email,
+            "name"               to user.name,
+            "cpf"                to user.cpf,
+            "plan"               to user.plan.name,
+            "emailVerified"      to user.emailVerified,
             "whatsappIntegrated" to user.whatsappIntegrated,
-            "createdAt" to user.createdAt
+            "createdAt"          to user.createdAt
         ))
+    }
+
+    // Público — chamado com o token do link do e-mail
+    @PostMapping("/verify-email")
+    fun verifyEmail(@RequestParam token: String): ResponseEntity<Map<String, String>> {
+        authUseCase.verifyEmail(token)
+        return ResponseEntity.ok(mapOf("message" to "E-mail verificado com sucesso!"))
+    }
+
+    // Autenticado — reenviar e-mail de verificação
+    @PostMapping("/resend-verification")
+    fun resendVerification(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<Map<String, String>> {
+        authUseCase.resendVerification(UUID.fromString(userDetails.username))
+        return ResponseEntity.ok(mapOf("message" to "E-mail de verificação reenviado"))
     }
 }

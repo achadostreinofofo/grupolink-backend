@@ -26,5 +26,6 @@ data class AuthResponse(
     val userId: String,
     val email: String,
     val name: String,
-    val plan: String
+    val plan: String,
+    val emailVerified: Boolean = true
 )

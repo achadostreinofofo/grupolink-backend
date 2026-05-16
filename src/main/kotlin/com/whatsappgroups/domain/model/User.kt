@@ -32,6 +32,15 @@ class User(
     @Column
     var trialEndsAt: java.time.LocalDateTime? = null,
 
+    @Column(nullable = false)
+    var emailVerified: Boolean = false,
+
+    @Column(name = "email_verify_token")
+    var emailVerifyToken: String? = null,
+
+    @Column(name = "email_verify_exp")
+    var emailVerifyExp: java.time.LocalDateTime? = null,
+
     @Column
     var whatsappPhone: String? = null,
 
