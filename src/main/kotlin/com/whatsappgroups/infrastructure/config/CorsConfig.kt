@@ -15,7 +15,13 @@ class CorsConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val config = CorsConfiguration()
-        config.allowedOrigins = listOf(frontendUrl, "http://localhost:3000", "http://localhost:8080")
+        // allowedOriginPatterns supports wildcards; needed when allowCredentials = true
+        config.allowedOriginPatterns = listOf(
+            frontendUrl,
+            "http://localhost:[*]",   // any localhost port (dev)
+            "https://*.amplifyapp.com",
+            "https://*.redirectgrupo.com.br"
+        )
         config.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         config.allowedHeaders = listOf("*")
         config.allowCredentials = true
