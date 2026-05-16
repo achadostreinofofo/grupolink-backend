@@ -30,6 +30,9 @@ class User(
     var cpf: String? = null,
 
     @Column
+    var trialEndsAt: java.time.LocalDateTime? = null,
+
+    @Column
     var whatsappPhone: String? = null,
 
     @Column

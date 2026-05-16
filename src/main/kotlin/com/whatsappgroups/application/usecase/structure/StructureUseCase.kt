@@ -3,6 +3,7 @@ package com.whatsappgroups.application.usecase.structure
 import com.whatsappgroups.application.dto.*
 import com.whatsappgroups.domain.model.Structure
 import com.whatsappgroups.domain.model.WhatsappGroup
+import com.whatsappgroups.domain.model.limits
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
@@ -25,7 +26,17 @@ class StructureUseCase(
             throw IllegalArgumentException("Slug '${request.slug}' já está em uso")
         }
 
-        val owner = userRepository.getReferenceById(userId)
+        val owner = userRepository.findById(userId)
+            .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        val limits = owner.plan.limits()
+        val currentCount = structureRepository.countByOwner(owner)
+        if (currentCount >= limits.maxStructures) {
+            throw IllegalArgumentException(
+                "Seu plano ${owner.plan.name} permite no máximo ${limits.maxStructures} estrutura(s). " +
+                "Faça upgrade para criar mais."
+            )
+        }
         val structure = structureRepository.save(
             Structure(
                 owner = owner,

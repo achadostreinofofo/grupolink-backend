@@ -9,5 +9,6 @@ import java.util.UUID
 
 interface ScheduledMessageRepository : JpaRepository<ScheduledMessage, UUID> {
     fun findAllByOwner(owner: User): List<ScheduledMessage>
+    fun countByOwnerAndStatus(owner: User, status: MessageStatus): Long
     fun findAllByStatusAndScheduledAtBefore(status: MessageStatus, dateTime: LocalDateTime): List<ScheduledMessage>
 }

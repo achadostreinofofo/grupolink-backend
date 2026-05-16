@@ -29,7 +29,9 @@ data class UserProfileResponse(
     val plan: String,
     val whatsappIntegrated: Boolean,
     val hasPassword: Boolean,
-    val createdAt: String
+    val createdAt: String,
+    val trialEndsAt: String?,
+    val isOnTrial: Boolean
 )
 
 @Service
@@ -110,6 +112,8 @@ class UserSettingsUseCase(
         plan               = plan.name,
         whatsappIntegrated = whatsappIntegrated,
         hasPassword        = passwordHash.isNotBlank(),
-        createdAt          = createdAt.toString()
+        createdAt          = createdAt.toString(),
+        trialEndsAt        = trialEndsAt?.toString(),
+        isOnTrial          = trialEndsAt != null && java.time.LocalDateTime.now().isBefore(trialEndsAt)
     )
 }

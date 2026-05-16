@@ -3,8 +3,10 @@ package com.whatsappgroups.application.usecase.auth
 import com.whatsappgroups.application.dto.AuthResponse
 import com.whatsappgroups.application.dto.LoginRequest
 import com.whatsappgroups.application.dto.SignUpRequest
+import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.User
 import com.whatsappgroups.domain.repository.UserRepository
+import java.time.LocalDateTime
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -29,7 +31,9 @@ class AuthUseCase(
                 passwordHash = passwordEncoder.encode(request.password),
                 name         = request.name,
                 cpf          = request.cpf?.replace(Regex("[^\\d]"), "")
-                                          ?.let { "${it.substring(0,3)}.${it.substring(3,6)}.${it.substring(6,9)}-${it.substring(9)}" }
+                                          ?.let { "${it.substring(0,3)}.${it.substring(3,6)}.${it.substring(6,9)}-${it.substring(9)}" },
+                plan         = Plan.SMART,
+                trialEndsAt  = LocalDateTime.now().plusDays(7)
             )
         )
 

@@ -9,4 +9,6 @@ interface StructureRepository : JpaRepository<Structure, UUID> {
     fun findBySlug(slug: String): Structure?
     fun findAllByOwner(owner: User): List<Structure>
     fun existsBySlug(slug: String): Boolean
+    fun countByOwner(owner: User): Long
+    fun deleteAllByOwner(owner: User)
 }

@@ -4,6 +4,7 @@ import com.whatsappgroups.application.dto.CreateScheduledMessageRequest
 import com.whatsappgroups.application.dto.ScheduledMessageResponse
 import com.whatsappgroups.domain.model.MessageStatus
 import com.whatsappgroups.domain.model.ScheduledMessage
+import com.whatsappgroups.domain.model.limits
 import com.whatsappgroups.domain.repository.ScheduledMessageRepository
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.UserRepository
@@ -21,7 +22,19 @@ class ScheduledMessageUseCase(
 
     @Transactional
     fun create(userId: UUID, request: CreateScheduledMessageRequest): ScheduledMessageResponse {
-        val owner = userRepository.getReferenceById(userId)
+        val owner = userRepository.findById(userId)
+            .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        val limits = owner.plan.limits()
+        if (limits.maxSavedMessages != Int.MAX_VALUE) {
+            val savedCount = messageRepository.countByOwnerAndStatus(owner, MessageStatus.PENDING)
+            if (savedCount >= limits.maxSavedMessages) {
+                throw IllegalArgumentException(
+                    "Seu plano ${owner.plan.name} permite no máximo ${limits.maxSavedMessages} mensagens salvas. " +
+                    "Cancele mensagens antigas ou faça upgrade."
+                )
+            }
+        }
 
         val structure = request.structureId?.let {
             structureRepository.findById(UUID.fromString(it))

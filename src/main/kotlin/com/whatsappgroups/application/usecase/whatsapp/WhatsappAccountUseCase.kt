@@ -4,6 +4,7 @@ import com.whatsappgroups.application.dto.ConnectWhatsappRequest
 import com.whatsappgroups.application.dto.WhatsappAccountResponse
 import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.WhatsappAccount
+import com.whatsappgroups.domain.model.limits
 import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.domain.repository.WhatsappAccountRepository
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappCloudApiClient
@@ -25,17 +26,11 @@ class WhatsappAccountUseCase(
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
 
         // Limite de contas por plano
+        val limits = user.plan.limits()
         val activeCount = whatsappAccountRepository.countByOwnerAndActive(user, true)
-        val maxAccounts = when (user.plan) {
-            Plan.FREE    -> 0L
-            Plan.SMART   -> 1L
-            Plan.DIAMOND -> 2L
-            Plan.BLACK   -> Long.MAX_VALUE
-        }
-
-        if (activeCount >= maxAccounts) {
+        if (limits.maxWhatsappAccounts != Int.MAX_VALUE && activeCount >= limits.maxWhatsappAccounts) {
             throw IllegalArgumentException(
-                "Seu plano ${user.plan.name} permite no máximo $maxAccounts conta(s) WhatsApp. " +
+                "Seu plano ${user.plan.name} permite no máximo ${limits.maxWhatsappAccounts} conta(s) WhatsApp. " +
                 "Faça upgrade para adicionar mais."
             )
         }
