@@ -1,5 +1,6 @@
 package com.whatsappgroups.interfaces.api
 
+import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -15,6 +16,13 @@ class GlobalExceptionHandler {
         val errors = ex.bindingResult.fieldErrors.associate { it.field to (it.defaultMessage ?: "Inválido") }
         return ResponseEntity.badRequest().body(mapOf("errors" to errors))
     }
+
+    @ExceptionHandler(CpfAlreadyExistsException::class)
+    fun handleCpfExists(ex: CpfAlreadyExistsException): ResponseEntity<Map<String, String>> =
+        ResponseEntity.status(HttpStatus.CONFLICT).body(mapOf(
+            "error" to "CPF_ALREADY_EXISTS",
+            "message" to "Já existe uma conta cadastrada com este CPF."
+        ))
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<Map<String, String>> =

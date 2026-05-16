@@ -23,13 +23,20 @@ class AuthUseCase(
             throw IllegalArgumentException("E-mail já cadastrado")
         }
 
+        val formattedCpf = request.cpf
+            ?.replace(Regex("[^\\d]"), "")
+            ?.let { d -> "${d.substring(0,3)}.${d.substring(3,6)}.${d.substring(6,9)}-${d.substring(9)}" }
+
+        if (formattedCpf != null && userRepository.existsByCpf(formattedCpf)) {
+            throw CpfAlreadyExistsException()
+        }
+
         val user = userRepository.save(
             User(
                 email        = request.email,
                 passwordHash = passwordEncoder.encode(request.password),
                 name         = request.name,
-                cpf          = request.cpf?.replace(Regex("[^\\d]"), "")
-                                          ?.let { "${it.substring(0,3)}.${it.substring(3,6)}.${it.substring(6,9)}-${it.substring(9)}" }
+                cpf          = formattedCpf
             )
         )
 
