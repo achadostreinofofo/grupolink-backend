@@ -66,6 +66,10 @@ app:
     app-secret: ${WHATSAPP_APP_SECRET:}
     webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:mude-este-token}
 
+  whatsapp-service:
+    url: ${WHATSAPP_SERVICE_URL:http://localhost:3001}
+    secret: ${WHATSAPP_SERVICE_SECRET:dev-secret-change-in-production}
+
   mercadopago:
     access-token: ${MP_ACCESS_TOKEN:}
     webhook-secret: ${MP_WEBHOOK_SECRET:}
