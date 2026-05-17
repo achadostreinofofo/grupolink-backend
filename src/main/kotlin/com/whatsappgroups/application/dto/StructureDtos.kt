@@ -1,11 +1,9 @@
 package com.whatsappgroups.application.dto
 
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.Size
 
 data class CreateStructureRequest(
     @field:NotBlank val name: String,
-    @field:NotBlank @field:Size(min = 3, max = 60) val slug: String,
     val description: String? = null,
     val maxMembersPerGroup: Int = 256,
     val fillThreshold: Double = 0.80

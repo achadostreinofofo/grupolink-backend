@@ -21,16 +21,13 @@ class StructureUseCase(
 
     @Transactional
     fun create(userId: UUID, request: CreateStructureRequest): StructureResponse {
-        if (structureRepository.existsBySlug(request.slug)) {
-            throw IllegalArgumentException("Slug '${request.slug}' já está em uso")
-        }
-
+        val slug = generateUniqueSlug()
         val owner = userRepository.getReferenceById(userId)
         val structure = structureRepository.save(
             Structure(
                 owner = owner,
                 name = request.name,
-                slug = request.slug,
+                slug = slug,
                 description = request.description,
                 maxMembersPerGroup = request.maxMembersPerGroup,
                 fillThreshold = request.fillThreshold
@@ -38,6 +35,14 @@ class StructureUseCase(
         )
 
         return structure.toResponse()
+    }
+
+    private fun generateUniqueSlug(): String {
+        val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        var slug: String
+        do { slug = (1..8).map { chars.random() }.joinToString("") }
+        while (structureRepository.existsBySlug(slug))
+        return slug
     }
 
     fun listByUser(userId: UUID): List<StructureResponse> {
