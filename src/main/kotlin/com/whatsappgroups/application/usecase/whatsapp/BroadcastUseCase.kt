@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.UUID
 
 @Service
@@ -68,15 +70,19 @@ class BroadcastUseCase(
             )
         }
 
-        // Enqueue async processing
-        rabbitTemplate.convertAndSend(
-            RabbitMQConfig.BROADCAST_EXCHANGE,
-            RabbitMQConfig.BROADCAST_KEY,
-            BroadcastMessage(
-                broadcastId = broadcast.id!!.toString(),
-                userId      = userId.toString()
-            )
-        )
+        // Publica no RabbitMQ SOMENTE após o commit da transação
+        // para evitar race condition onde o consumer lê o DB antes do commit
+        val broadcastId = broadcast.id!!.toString()
+        val userIdStr   = userId.toString()
+        TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+            override fun afterCommit() {
+                rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.BROADCAST_EXCHANGE,
+                    RabbitMQConfig.BROADCAST_KEY,
+                    BroadcastMessage(broadcastId = broadcastId, userId = userIdStr)
+                )
+            }
+        })
 
         log.info("Broadcast ${broadcast.id} queued for ${targetGroups.size} groups in structure $structureId")
 
