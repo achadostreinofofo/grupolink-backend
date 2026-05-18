@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import software.amazon.awssdk.services.s3.model.S3Exception
 import java.security.GeneralSecurityException
 
 @RestControllerAdvice
@@ -47,6 +48,19 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException::class)
     fun handleIllegalState(ex: IllegalStateException): ResponseEntity<Map<String, String>> =
         ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mapOf("error" to (ex.message ?: "Serviço indisponível")))
+
+    @ExceptionHandler(S3Exception::class)
+    fun handleS3Error(ex: S3Exception): ResponseEntity<Map<String, String>> {
+        val message = when (ex.statusCode()) {
+            403  -> "Credenciais AWS inválidas ou sem permissão de acesso ao bucket S3. " +
+                    "Verifique as variáveis S3_ACCESS_KEY, S3_SECRET_KEY e S3_BUCKET."
+            404  -> "Bucket S3 não encontrado. Verifique a variável S3_BUCKET."
+            else -> "Falha ao fazer upload da imagem para o S3 (código ${ex.statusCode()}). " +
+                    "Verifique as configurações S3_* no servidor."
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(mapOf("error" to "S3_ERROR", "message" to message))
+    }
 
     // RSA decryption failures — most likely cause: stale public key cached in the browser
     // The frontend must re-fetch /api/security/public-key and retry.
