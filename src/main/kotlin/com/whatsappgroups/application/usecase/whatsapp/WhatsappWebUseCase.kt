@@ -62,8 +62,11 @@ class WhatsappWebUseCase(
             "authenticated"  -> WebSessionStatus.AUTHENTICATED
             "disconnected"   -> WebSessionStatus.DISCONNECTED
             "not_found"      -> {
-                // Session was lost (service restarted?), recreate it
-                serviceClient.createSession(sessionId)
+                // Only recreate if the DB session was previously waiting (service restarted)
+                // The service itself guards against duplicate recreation
+                if (session.status == WebSessionStatus.WAITING_SCAN) {
+                    serviceClient.createSession(sessionId)
+                }
                 WebSessionStatus.WAITING_SCAN
             }
             else             -> WebSessionStatus.WAITING_SCAN
