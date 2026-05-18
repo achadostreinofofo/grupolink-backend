@@ -27,7 +27,7 @@ class WhatsappAccountUseCase(
         // Limite de contas por plano
         val activeCount = whatsappAccountRepository.countByOwnerAndActive(user, true)
         val maxAccounts = when (user.plan) {
-            Plan.FREE    -> 0L
+            Plan.FREE    -> 1L   // trial tem as mesmas features que SMART
             Plan.SMART   -> 1L
             Plan.DIAMOND -> 2L
             Plan.BLACK   -> Long.MAX_VALUE

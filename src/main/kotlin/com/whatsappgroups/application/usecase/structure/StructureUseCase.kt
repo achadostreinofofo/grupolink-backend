@@ -21,8 +21,24 @@ class StructureUseCase(
 
     @Transactional
     fun create(userId: UUID, request: CreateStructureRequest): StructureResponse {
+        val owner = userRepository.findById(userId)
+            .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        val existing = structureRepository.findAllByOwner(owner).size
+        val maxAllowed = when (owner.plan) {
+            com.whatsappgroups.domain.model.Plan.FREE    -> 1
+            com.whatsappgroups.domain.model.Plan.SMART   -> 1
+            com.whatsappgroups.domain.model.Plan.DIAMOND -> 4
+            com.whatsappgroups.domain.model.Plan.BLACK   -> Int.MAX_VALUE
+        }
+        if (existing >= maxAllowed) {
+            throw IllegalArgumentException(
+                "Seu plano ${owner.plan.name} permite no máximo $maxAllowed estrutura(s). " +
+                "Faça upgrade para adicionar mais."
+            )
+        }
+
         val slug = generateUniqueSlug()
-        val owner = userRepository.getReferenceById(userId)
         val structure = structureRepository.save(
             Structure(
                 owner = owner,
