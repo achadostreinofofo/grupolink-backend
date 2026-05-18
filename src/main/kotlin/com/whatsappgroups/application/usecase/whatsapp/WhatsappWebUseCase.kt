@@ -35,7 +35,14 @@ class WhatsappWebUseCase(
             WhatsappWebSession(owner = owner, sessionId = sessionId)
         )
 
-        serviceClient.createSession(sessionId)
+        val created = serviceClient.createSession(sessionId)
+        if (!created) {
+            sessionRepository.delete(session)
+            throw IllegalStateException(
+                "WhatsApp Service não está disponível. " +
+                "Inicie o whatsapp-service com: cd whatsapp-service && npm install && node src/index.js"
+            )
+        }
 
         return StartSessionResponse(sessionId = session.sessionId, status = session.status.name)
     }
