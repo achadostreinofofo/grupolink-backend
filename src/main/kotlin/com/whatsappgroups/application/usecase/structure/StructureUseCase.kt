@@ -81,14 +81,32 @@ class StructureUseCase(
 
         if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
 
-        val sortOrder = structure.groups.size
+        val isFirstGroup = structure.groupNamePrefix == null
+
+        // Primeiro grupo: salva prefixo, número inicial e foto de perfil
+        if (isFirstGroup) {
+            if (request.profilePicUrl.isNullOrBlank()) {
+                throw IllegalArgumentException("A foto de perfil é obrigatória para o primeiro grupo da estrutura.")
+            }
+            structure.groupNamePrefix   = request.name
+            structure.nextGroupNumber   = request.startingNumber + 1
+            structure.groupProfilePicUrl = request.profilePicUrl
+        }
+
+        // Nome completo: "Achados Treino Fofo #10"
+        val prefix = structure.groupNamePrefix ?: request.name
+        val number = if (isFirstGroup) request.startingNumber else structure.nextGroupNumber
+        val fullName = "$prefix #$number"
+
+        // Incrementa contador para o próximo grupo
+        if (!isFirstGroup) structure.nextGroupNumber = number + 1
+
         val group = groupRepository.save(
             WhatsappGroup(
                 structure = structure,
-                name = request.name,
-                inviteLink = request.inviteLink,
-                maxMembers = request.maxMembers,
-                sortOrder = sortOrder
+                name      = fullName,
+                maxMembers = structure.maxMembersPerGroup,
+                sortOrder  = structure.groups.size
             )
         )
 
@@ -96,15 +114,18 @@ class StructureUseCase(
     }
 
     private fun Structure.toResponse() = StructureResponse(
-        id = id.toString(),
-        name = name,
-        slug = slug,
-        description = description,
+        id                 = id.toString(),
+        name               = name,
+        slug               = slug,
+        description        = description,
         maxMembersPerGroup = maxMembersPerGroup,
-        fillThreshold = fillThreshold,
-        active = active,
-        groups = groups.map { it.toResponse() },
-        smartLink = "$baseUrl/r/$slug"
+        fillThreshold      = fillThreshold,
+        active             = active,
+        groups             = groups.map { it.toResponse() },
+        smartLink          = "$baseUrl/r/$slug",
+        groupNamePrefix    = groupNamePrefix,
+        nextGroupNumber    = nextGroupNumber,
+        groupProfilePicUrl = groupProfilePicUrl
     )
 
     private fun WhatsappGroup.toResponse() = GroupResponse(

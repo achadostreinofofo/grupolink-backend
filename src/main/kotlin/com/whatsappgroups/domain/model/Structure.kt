@@ -34,6 +34,16 @@ class Structure(
     @Column(nullable = false)
     var active: Boolean = true,
 
+    // Padrão de nomeação dos grupos gerados automaticamente
+    @Column
+    var groupNamePrefix: String? = null,        // ex: "Achados Treino Fofo"
+
+    @Column(nullable = false)
+    var nextGroupNumber: Int = 1,               // próximo número ao criar automaticamente
+
+    @Column
+    var groupProfilePicUrl: String? = null,     // foto de perfil usada em todos os grupos
+
     @OneToMany(mappedBy = "structure", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")
     val groups: MutableList<WhatsappGroup> = mutableListOf(),

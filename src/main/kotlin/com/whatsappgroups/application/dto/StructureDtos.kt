@@ -10,9 +10,9 @@ data class CreateStructureRequest(
 )
 
 data class AddGroupRequest(
-    @field:NotBlank val name: String,
-    val inviteLink: String? = null,
-    val maxMembers: Int = 256
+    @field:NotBlank val name: String,           // nome base, ex: "Achados Treino Fofo"
+    val startingNumber: Int = 1,                // número inicial, ex: 10 → "Achados Treino Fofo #10"
+    val profilePicUrl: String? = null           // S3 URL (obrigatório no primeiro grupo)
 )
 
 data class GroupResponse(
@@ -36,5 +36,8 @@ data class StructureResponse(
     val fillThreshold: Double,
     val active: Boolean,
     val groups: List<GroupResponse>,
-    val smartLink: String
+    val smartLink: String,
+    val groupNamePrefix: String?,
+    val nextGroupNumber: Int,
+    val groupProfilePicUrl: String?
 )
