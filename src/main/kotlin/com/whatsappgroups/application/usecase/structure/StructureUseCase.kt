@@ -131,23 +131,40 @@ class StructureUseCase(
                     )
                 }
 
-            try {
-                val result = whatsappWebClient.createGroup(
-                    sessionId     = session.sessionId,
-                    groupName     = fullName,
-                    participants  = request.participantJids,
-                    profilePicUrl = structure.groupProfilePicUrl
-                )
-                whatsappGroupId = result.groupId
-                inviteLink      = result.inviteLink
-                groupStatus     = GroupStatus.ACTIVE
-                log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
-            } catch (e: Exception) {
-                // Sessão perdida na memória do serviço (reinicialização) — recria e avisa
-                whatsappWebClient.createSession(session.sessionId)
-                throw IllegalStateException(
-                    "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente criar o grupo novamente."
-                )
+            // Verifica o estado real da sessão no whatsapp-service antes de criar o grupo
+            val sessionStatus = whatsappWebClient.getSessionStatus(session.sessionId)
+            when (sessionStatus.status) {
+                "authenticated" -> {
+                    // Sessão pronta — cria o grupo
+                    try {
+                        val result = whatsappWebClient.createGroup(
+                            sessionId     = session.sessionId,
+                            groupName     = fullName,
+                            participants  = request.participantJids,
+                            profilePicUrl = structure.groupProfilePicUrl
+                        )
+                        whatsappGroupId = result.groupId
+                        inviteLink      = result.inviteLink
+                        groupStatus     = GroupStatus.ACTIVE
+                        log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
+                    } catch (e: Exception) {
+                        log.error("createGroup error: ${e.message}")
+                        throw IllegalStateException("Falha ao criar grupo no WhatsApp: ${e.message}")
+                    }
+                }
+                "waiting_scan" -> {
+                    // Já reconectando — não destruir o socket, só pedir para aguardar
+                    throw IllegalStateException(
+                        "A sessão WhatsApp está reconectando. Aguarde alguns segundos e tente novamente."
+                    )
+                }
+                else -> {
+                    // Sessão não existe no serviço — recria usando credenciais em disco
+                    whatsappWebClient.createSession(session.sessionId)
+                    throw IllegalStateException(
+                        "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente criar o grupo novamente."
+                    )
+                }
             }
         }
 
