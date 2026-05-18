@@ -75,16 +75,13 @@ class WhatsappWebController(
                     jid            = result.jid
                 )
             )
-        } catch (e: IllegalStateException) {
-            // Sessão perdida na memória do serviço (reinicialização) — reconecta automaticamente
-            if (e.message?.contains("not authenticated", ignoreCase = true) == true ||
-                e.message?.contains("Session not authenticated", ignoreCase = true) == true) {
-                webServiceClient.createSession(session.sessionId)
-                throw IllegalStateException(
-                    "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente novamente."
-                )
-            }
-            throw e
+        } catch (e: Exception) {
+            // Qualquer erro no check-number indica sessão perdida (serviço reiniciado).
+            // Recria o socket — Baileys reconecta usando credenciais em disco (sem novo QR).
+            webServiceClient.createSession(session.sessionId)
+            throw IllegalStateException(
+                "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente novamente."
+            )
         }
     }
 }
