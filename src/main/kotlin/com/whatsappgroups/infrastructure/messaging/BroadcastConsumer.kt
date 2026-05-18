@@ -59,6 +59,27 @@ class BroadcastConsumer(
         val sessionId = ownerRef.sessionId
         log.info("Broadcast $broadcastId starting with session $sessionId for user $userId")
 
+        // Verifica se a sessão está de fato autenticada no whatsapp-service
+        val sessionStatus = webServiceClient.getSessionStatus(sessionId)
+        when (sessionStatus.status) {
+            "authenticated" -> { /* ok, prossegue */ }
+            "waiting_scan"  -> {
+                log.warn("Broadcast $broadcastId — session $sessionId is reconnecting, will retry later")
+                broadcast.status       = BroadcastStatus.FAILED
+                broadcast.errorMessage = "Sessão WhatsApp reconectando. Aguarde alguns segundos e tente novamente."
+                broadcastRepository.save(broadcast)
+                return
+            }
+            else -> {
+                log.warn("Broadcast $broadcastId — session $sessionId not found in service, recreating")
+                webServiceClient.createSession(sessionId)
+                broadcast.status       = BroadcastStatus.FAILED
+                broadcast.errorMessage = "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente novamente."
+                broadcastRepository.save(broadcast)
+                return
+            }
+        }
+
         val results = resultRepository.findAllByBroadcastId(broadcastId)
         log.info("Broadcast $broadcastId has ${results.size} group(s) to process")
 
