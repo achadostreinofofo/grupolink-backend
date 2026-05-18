@@ -37,6 +37,8 @@ class StructureMessageController(private val messageUseCase: ScheduledMessageUse
         ResponseEntity.ok(messageUseCase.listByStructure(UUID.fromString(user.username), structureId))
 }
 
+data class SendNowRequest(val groupIds: List<String>? = null)
+
 // ── Operações por mensagem ───────────────────────────────────────
 
 @RestController
@@ -58,9 +60,10 @@ class ScheduledMessageController(private val messageUseCase: ScheduledMessageUse
     @PostMapping("/{id}/send")
     fun sendNow(
         @AuthenticationPrincipal user: UserDetails,
-        @PathVariable id: UUID
+        @PathVariable id: UUID,
+        @RequestBody(required = false) body: SendNowRequest?
     ): ResponseEntity<ScheduledMessageResponse> =
-        ResponseEntity.ok(messageUseCase.sendNow(UUID.fromString(user.username), id))
+        ResponseEntity.ok(messageUseCase.sendNow(UUID.fromString(user.username), id, body?.groupIds))
 
     @DeleteMapping("/{id}")
     fun delete(

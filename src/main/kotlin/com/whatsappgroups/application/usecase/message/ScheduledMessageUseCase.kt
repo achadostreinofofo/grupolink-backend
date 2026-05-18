@@ -69,7 +69,7 @@ class ScheduledMessageUseCase(
     }
 
     @Transactional
-    fun sendNow(userId: UUID, messageId: UUID): ScheduledMessageResponse {
+    fun sendNow(userId: UUID, messageId: UUID, groupIds: List<String>? = null): ScheduledMessageResponse {
         val message = findOwned(userId, messageId)
 
         val structure = message.structure
@@ -86,7 +86,8 @@ class ScheduledMessageUseCase(
             request     = BroadcastMessageRequest(
                 messageType = messageType,
                 content     = message.content,
-                mediaUrl    = message.mediaUrl
+                mediaUrl    = message.mediaUrl,
+                groupIds    = groupIds
             )
         )
 
