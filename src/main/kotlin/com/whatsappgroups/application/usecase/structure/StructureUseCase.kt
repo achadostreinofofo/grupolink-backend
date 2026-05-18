@@ -1,11 +1,16 @@
 package com.whatsappgroups.application.usecase.structure
 
 import com.whatsappgroups.application.dto.*
+import com.whatsappgroups.domain.model.GroupStatus
 import com.whatsappgroups.domain.model.Structure
 import com.whatsappgroups.domain.model.WhatsappGroup
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.UserRepository
+import com.whatsappgroups.domain.repository.WhatsappWebSessionRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
+import com.whatsappgroups.domain.model.WebSessionStatus
+import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,8 +21,11 @@ class StructureUseCase(
     private val structureRepository: StructureRepository,
     private val groupRepository: WhatsappGroupRepository,
     private val userRepository: UserRepository,
+    private val sessionRepository: WhatsappWebSessionRepository,
+    private val whatsappWebClient: WhatsappWebServiceClient,
     @Value("\${app.base-url}") private val baseUrl: String
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @Transactional
     fun create(userId: UUID, request: CreateStructureRequest): StructureResponse {
@@ -101,12 +109,45 @@ class StructureUseCase(
         // Incrementa contador para o próximo grupo
         if (!isFirstGroup) structure.nextGroupNumber = number + 1
 
+        var whatsappGroupId: String? = null
+        var inviteLink: String? = null
+        var groupStatus = GroupStatus.CREATING
+
+        // Cria grupo real no WhatsApp via whatsapp-service (se houver participantes)
+        if (!request.participantPhones.isNullOrEmpty()) {
+            val session = sessionRepository
+                .findFirstByOwnerAndStatus(structure.owner, WebSessionStatus.AUTHENTICATED)
+                .orElse(null)
+
+            if (session != null) {
+                val result = whatsappWebClient.createGroup(
+                    sessionId     = session.sessionId,
+                    groupName     = fullName,
+                    participants  = request.participantPhones,
+                    profilePicUrl = structure.groupProfilePicUrl
+                )
+                if (result != null) {
+                    whatsappGroupId = result.groupId
+                    inviteLink      = result.inviteLink
+                    groupStatus     = GroupStatus.ACTIVE
+                    log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
+                } else {
+                    log.warn("WhatsApp group creation returned null for session {}", session.sessionId)
+                }
+            } else {
+                log.warn("No authenticated WhatsApp Web session found for user {}", userId)
+            }
+        }
+
         val group = groupRepository.save(
             WhatsappGroup(
-                structure = structure,
-                name      = fullName,
-                maxMembers = structure.maxMembersPerGroup,
-                sortOrder  = structure.groups.size
+                structure       = structure,
+                name            = fullName,
+                whatsappGroupId = whatsappGroupId,
+                inviteLink      = inviteLink,
+                maxMembers      = structure.maxMembersPerGroup,
+                sortOrder       = structure.groups.size,
+                status          = groupStatus
             )
         )
 

@@ -16,17 +16,16 @@ data class SessionStatusResponse(
     val phone: String?
 )
 
-// ──────── Group Creation (via WhatsApp Web) ────────
+// ──────── Phone Number Check ────────
 
-data class CreateWhatsappGroupRequest(
-    @field:NotBlank val name: String,
-    val structureId: String? = null
+data class CheckPhoneRequest(
+    @field:NotBlank val phone: String  // DDD + número, ex: "11999998888"
 )
 
-data class CreateWhatsappGroupResponse(
-    val whatsappGroupId: String,
-    val inviteLink: String,
-    val groupName: String
+data class CheckPhoneResponse(
+    val phone: String,
+    val exists: Boolean,
+    val formattedPhone: String  // com código do país, ex: "5511999998888"
 )
 
 // ──────── Message Broadcasting ────────

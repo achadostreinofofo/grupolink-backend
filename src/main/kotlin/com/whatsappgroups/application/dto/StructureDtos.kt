@@ -10,9 +10,10 @@ data class CreateStructureRequest(
 )
 
 data class AddGroupRequest(
-    @field:NotBlank val name: String,           // nome base, ex: "Achados Treino Fofo"
-    val startingNumber: Int = 1,                // número inicial, ex: 10 → "Achados Treino Fofo #10"
-    val profilePicUrl: String? = null           // S3 URL (obrigatório no primeiro grupo)
+    @field:NotBlank val name: String,
+    val startingNumber: Int = 1,
+    val profilePicUrl: String? = null,
+    val participantPhones: List<String>? = null  // números que entram no grupo ao criar no WhatsApp
 )
 
 data class GroupResponse(

@@ -7,7 +7,7 @@ import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.bodyToMono
 
 data class WebServiceSessionStatus(
-    val status: String,          // waiting_scan | authenticated | disconnected | not_found
+    val status: String,
     val qrBase64: String? = null,
     val phone: String? = null
 )
@@ -15,6 +15,11 @@ data class WebServiceSessionStatus(
 data class WebServiceGroupResult(
     val groupId: String,
     val inviteLink: String
+)
+
+data class CheckPhoneResult(
+    val exists: Boolean,
+    val phone: String
 )
 
 @Component
@@ -71,10 +76,34 @@ class WhatsappWebServiceClient(
         false
     }
 
-    fun createGroup(sessionId: String, groupName: String): WebServiceGroupResult? = runCatching {
+    fun checkPhoneNumber(sessionId: String, phone: String): CheckPhoneResult? = runCatching {
+        val resp = client.post()
+            .uri("/check-number")
+            .bodyValue(mapOf("sessionId" to sessionId, "phone" to phone))
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block() ?: return null
+
+        CheckPhoneResult(
+            exists = resp["exists"] as? Boolean ?: false,
+            phone  = resp["phone"] as? String ?: phone
+        )
+    }.getOrElse {
+        log.warn("Failed to check phone $phone via session $sessionId: ${it.message}")
+        null
+    }
+
+    fun createGroup(sessionId: String, groupName: String, participants: List<String>, profilePicUrl: String?): WebServiceGroupResult? = runCatching {
+        val body = mutableMapOf<String, Any>(
+            "sessionId"   to sessionId,
+            "groupName"   to groupName,
+            "participants" to participants
+        )
+        if (profilePicUrl != null) body["profilePicUrl"] = profilePicUrl
+
         val resp = client.post()
             .uri("/groups")
-            .bodyValue(mapOf("sessionId" to sessionId, "groupName" to groupName))
+            .bodyValue(body)
             .retrieve()
             .bodyToMono<Map<String, Any>>()
             .block() ?: return null
