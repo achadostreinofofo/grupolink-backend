@@ -125,25 +125,29 @@ class StructureUseCase(
         if (!request.participantJids.isNullOrEmpty()) {
             val session = sessionRepository
                 .findFirstByOwnerAndStatus(structure.owner, WebSessionStatus.AUTHENTICATED)
-                .orElse(null)
+                .orElseThrow {
+                    IllegalStateException(
+                        "Nenhuma sessão WhatsApp autenticada. Conecte uma conta em WhatsApp → QR Code."
+                    )
+                }
 
-            if (session != null) {
+            try {
                 val result = whatsappWebClient.createGroup(
                     sessionId     = session.sessionId,
                     groupName     = fullName,
                     participants  = request.participantJids,
                     profilePicUrl = structure.groupProfilePicUrl
                 )
-                if (result != null) {
-                    whatsappGroupId = result.groupId
-                    inviteLink      = result.inviteLink
-                    groupStatus     = GroupStatus.ACTIVE
-                    log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
-                } else {
-                    log.warn("WhatsApp group creation returned null for session {}", session.sessionId)
-                }
-            } else {
-                log.warn("No authenticated WhatsApp Web session found for user {}", userId)
+                whatsappGroupId = result.groupId
+                inviteLink      = result.inviteLink
+                groupStatus     = GroupStatus.ACTIVE
+                log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
+            } catch (e: Exception) {
+                // Sessão perdida na memória do serviço (reinicialização) — recria e avisa
+                whatsappWebClient.createSession(session.sessionId)
+                throw IllegalStateException(
+                    "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente criar o grupo novamente."
+                )
             }
         }
 

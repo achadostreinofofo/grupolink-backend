@@ -97,28 +97,30 @@ class WhatsappWebServiceClient(
         }
     }
 
-    fun createGroup(sessionId: String, groupName: String, participants: List<String>, profilePicUrl: String?): WebServiceGroupResult? = runCatching {
-        val body = mutableMapOf<String, Any>(
-            "sessionId"   to sessionId,
-            "groupName"   to groupName,
-            "participants" to participants
-        )
-        if (profilePicUrl != null) body["profilePicUrl"] = profilePicUrl
+    fun createGroup(sessionId: String, groupName: String, participants: List<String>, profilePicUrl: String?): WebServiceGroupResult {
+        return runCatching {
+            val body = mutableMapOf<String, Any>(
+                "sessionId"    to sessionId,
+                "groupName"    to groupName,
+                "participants" to participants
+            )
+            if (profilePicUrl != null) body["profilePicUrl"] = profilePicUrl
 
-        val resp = client.post()
-            .uri("/groups")
-            .bodyValue(body)
-            .retrieve()
-            .bodyToMono<Map<String, Any>>()
-            .block() ?: return null
+            val resp = client.post()
+                .uri("/groups")
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono<Map<String, Any>>()
+                .block() ?: throw IllegalStateException("Resposta vazia do WhatsApp Service")
 
-        WebServiceGroupResult(
-            groupId    = resp["groupId"] as? String ?: error("missing groupId"),
-            inviteLink = resp["inviteLink"] as? String ?: error("missing inviteLink")
-        )
-    }.getOrElse {
-        log.error("Failed to create WhatsApp group via session $sessionId: ${it.message}")
-        null
+            WebServiceGroupResult(
+                groupId    = resp["groupId"] as? String ?: error("missing groupId"),
+                inviteLink = resp["inviteLink"] as? String ?: error("missing inviteLink")
+            )
+        }.getOrElse {
+            log.error("createGroup failed for session $sessionId: ${it.message}")
+            throw IllegalStateException("Erro ao criar grupo no WhatsApp: ${it.message}")
+        }
     }
 
     fun sendTextMessage(sessionId: String, whatsappGroupId: String, text: String): Boolean = runCatching {
