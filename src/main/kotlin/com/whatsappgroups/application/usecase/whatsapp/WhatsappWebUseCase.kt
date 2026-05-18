@@ -23,13 +23,15 @@ class WhatsappWebUseCase(
         val owner = userRepository.findById(userId)
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
 
-        // Reuse active session if present
-        val existing = sessionRepository.findFirstByOwnerAndStatus(owner, WebSessionStatus.AUTHENTICATED)
-        if (existing.isPresent) {
-            val s = existing.get()
-            return StartSessionResponse(sessionId = s.sessionId, status = s.status.name)
-        }
+        // Remove sessões antigas WAITING_SCAN antes de criar nova
+        sessionRepository.findAllByOwner(owner)
+            .filter { it.status == WebSessionStatus.WAITING_SCAN }
+            .forEach { stale ->
+                serviceClient.deleteSession(stale.sessionId)
+                sessionRepository.delete(stale)
+            }
 
+        // Sempre cria uma nova sessão (permite múltiplos números conectados)
         val sessionId = UUID.randomUUID().toString()
         val session = sessionRepository.save(
             WhatsappWebSession(owner = owner, sessionId = sessionId)
@@ -57,13 +59,10 @@ class WhatsappWebUseCase(
 
         val remote = serviceClient.getSessionStatus(sessionId)
 
-        // Sync status from WhatsApp service → DB
         val newStatus = when (remote.status) {
             "authenticated"  -> WebSessionStatus.AUTHENTICATED
             "disconnected"   -> WebSessionStatus.DISCONNECTED
             "not_found"      -> {
-                // Only recreate if the DB session was previously waiting (service restarted)
-                // The service itself guards against duplicate recreation
                 if (session.status == WebSessionStatus.WAITING_SCAN) {
                     serviceClient.createSession(sessionId)
                 }
@@ -94,20 +93,23 @@ class WhatsappWebUseCase(
         if (session.owner.id != userId) throw IllegalAccessException("Acesso negado")
 
         serviceClient.deleteSession(sessionId)
-        session.status    = WebSessionStatus.DISCONNECTED
-        session.updatedAt = LocalDateTime.now()
+        // Deleta o registro — não apenas marca como DISCONNECTED
+        sessionRepository.delete(session)
     }
 
     fun listSessions(userId: UUID): List<SessionStatusResponse> {
         val owner = userRepository.getReferenceById(userId)
-        return sessionRepository.findAllByOwner(owner).map { s ->
-            SessionStatusResponse(
-                sessionId = s.sessionId,
-                status    = s.status.name,
-                qrBase64  = null,
-                phone     = s.phone
-            )
-        }
+        // Retorna apenas sessões ativas (WAITING_SCAN ou AUTHENTICATED)
+        return sessionRepository.findAllByOwner(owner)
+            .filter { it.status != WebSessionStatus.DISCONNECTED }
+            .map { s ->
+                SessionStatusResponse(
+                    sessionId = s.sessionId,
+                    status    = s.status.name,
+                    qrBase64  = null,
+                    phone     = s.phone
+                )
+            }
     }
 
     fun getAuthenticatedSession(userId: UUID): WhatsappWebSession? {
