@@ -178,14 +178,15 @@ class StructureUseCase(
     )
 
     private fun WhatsappGroup.toResponse() = GroupResponse(
-        id = id.toString(),
-        name = name,
-        inviteLink = inviteLink,
-        memberCount = memberCount,
-        maxMembers = maxMembers,
+        id              = id.toString(),
+        name            = name,
+        inviteLink      = inviteLink,
+        memberCount     = memberCount,
+        maxMembers      = maxMembers,
         capacityPercentage = capacityPercentage,
-        clickCount = clickCount,
-        status = status.name,
-        sortOrder = sortOrder
+        clickCount      = clickCount,
+        status          = status.name,
+        sortOrder       = sortOrder,
+        whatsappGroupId = whatsappGroupId
     )
 }

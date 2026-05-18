@@ -57,7 +57,10 @@ class BroadcastConsumer(
         }
 
         val sessionId = ownerRef.sessionId
+        log.info("Broadcast $broadcastId starting with session $sessionId for user $userId")
+
         val results = resultRepository.findAllByBroadcastId(broadcastId)
+        log.info("Broadcast $broadcastId has ${results.size} group(s) to process")
 
         var successCount = 0
         var failCount = 0
@@ -67,12 +70,17 @@ class BroadcastConsumer(
             val whatsappGroupId = group.whatsappGroupId
 
             if (whatsappGroupId == null) {
+                val msg = "Grupo '${group.name}' (${group.id}) não tem ID WhatsApp — " +
+                    "recrie o grupo pela plataforma para gerar o ID real no WhatsApp."
+                log.error("BROADCAST $broadcastId SKIPPED GROUP: $msg")
                 result.status = BroadcastGroupSendStatus.FAILED
-                result.errorMessage = "Grupo sem ID WhatsApp associado"
+                result.errorMessage = msg
                 resultRepository.save(result)
                 failCount++
                 continue
             }
+
+            log.info("Broadcast $broadcastId → sending to group '${group.name}' ($whatsappGroupId)")
 
             val sent = try {
                 when (broadcast.messageType) {
@@ -82,16 +90,18 @@ class BroadcastConsumer(
                         webServiceClient.sendImageMessage(sessionId, whatsappGroupId, broadcast.mediaUrl ?: "", broadcast.content)
                 }
             } catch (e: Exception) {
-                log.error("Error sending message to group ${group.id} for broadcast $broadcastId: ${e.message}")
+                log.error("Broadcast $broadcastId — error sending to group ${group.id}: ${e.message}")
                 false
             }
 
             if (sent) {
+                log.info("Broadcast $broadcastId → group '${group.name}' SUCCESS")
                 result.status = BroadcastGroupSendStatus.SUCCESS
                 successCount++
             } else {
+                log.warn("Broadcast $broadcastId → group '${group.name}' FAILED")
                 result.status = BroadcastGroupSendStatus.FAILED
-                result.errorMessage = "Falha ao enviar mensagem"
+                result.errorMessage = "Falha ao enviar via whatsapp-service"
                 failCount++
             }
 
@@ -101,13 +111,12 @@ class BroadcastConsumer(
             broadcast.groupsFailed = failCount
             broadcastRepository.save(broadcast)
 
-            // Small delay to avoid rate limiting
             Thread.sleep(500)
         }
 
         broadcast.status = BroadcastStatus.COMPLETED
         broadcastRepository.save(broadcast)
 
-        log.info("Broadcast $broadcastId completed: $successCount success, $failCount failed")
+        log.info("Broadcast $broadcastId COMPLETED: $successCount success, $failCount failed")
     }
 }

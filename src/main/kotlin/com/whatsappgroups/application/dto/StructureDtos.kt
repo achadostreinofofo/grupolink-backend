@@ -25,7 +25,8 @@ data class GroupResponse(
     val capacityPercentage: Double,
     val clickCount: Long,
     val status: String,
-    val sortOrder: Int
+    val sortOrder: Int,
+    val whatsappGroupId: String?   // null = grupo não criado no WhatsApp ainda
 )
 
 data class StructureResponse(
