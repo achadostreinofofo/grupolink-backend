@@ -71,7 +71,8 @@ class GroupUpdateUseCase(
             capacityPercentage = group.capacityPercentage,
             clickCount         = group.clickCount,
             status             = group.status.name,
-            sortOrder          = group.sortOrder
+            sortOrder          = group.sortOrder,
+            whatsappGroupId    = group.id.toString(),
         )
     }
 }
