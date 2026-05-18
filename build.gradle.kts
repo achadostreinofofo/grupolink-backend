@@ -55,8 +55,9 @@ dependencies {
     // RabbitMQ
     implementation("org.springframework.boot:spring-boot-starter-amqp")
 
-    // AWS S3
+    // AWS S3 + SES
     implementation("software.amazon.awssdk:s3:2.25.40")
+    implementation("software.amazon.awssdk:ses:2.25.40")
     implementation("software.amazon.awssdk:sts:2.25.40")
 
     // Testes

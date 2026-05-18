@@ -77,6 +77,15 @@ app:
     secret-key: ${S3_SECRET_KEY:}
     base-url: ${S3_BASE_URL:}
 
+  ses:
+    region: ${SES_REGION:us-east-1}
+    access-key: ${SES_ACCESS_KEY:}
+    secret-key: ${SES_SECRET_KEY:}
+    from: ${SES_FROM_EMAIL:noreply@redirectgrupo.com.br}
+
+  contact:
+    email: ${CONTACT_EMAIL:contato@redirectgrupo.com.br}
+
   mercadopago:
     access-token: ${MP_ACCESS_TOKEN:}
     webhook-secret: ${MP_WEBHOOK_SECRET:}
