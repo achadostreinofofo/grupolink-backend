@@ -69,6 +69,14 @@ class StructureUseCase(
         return slug
     }
 
+    @Transactional
+    fun delete(userId: UUID, structureId: UUID) {
+        val structure = structureRepository.findById(structureId)
+            .orElseThrow { NoSuchElementException("Estrutura não encontrada") }
+        if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
+        structureRepository.delete(structure)
+    }
+
     fun listByUser(userId: UUID): List<StructureResponse> {
         val owner = userRepository.getReferenceById(userId)
         return structureRepository.findAllByOwner(owner).map { it.toResponse() }
