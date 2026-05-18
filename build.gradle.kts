@@ -32,6 +32,9 @@ dependencies {
     // Flyway
     implementation("org.flywaydb:flyway-core")
 
+    // Carrega automaticamente o arquivo .env em desenvolvimento local
+    implementation("me.paulschwarz:spring-dotenv:4.0.0")
+
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
