@@ -3,32 +3,24 @@ package com.whatsappgroups.infrastructure.email
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ses.SesClient
 import software.amazon.awssdk.services.ses.model.*
 
 @Service
 class SesEmailService(
-    @Value("\${app.ses.region:us-east-1}")    private val region: String,
-    @Value("\${app.ses.access-key:}")         private val accessKey: String,
-    @Value("\${app.ses.secret-key:}")         private val secretKey: String,
-    @Value("\${app.ses.from:noreply@redirectgrupo.com.br}") private val fromAddress: String
+    private val awsCredentialsProvider: AwsCredentialsProvider,
+    @Value("\${app.ses.region:\${app.s3.region:us-east-1}}") private val region: String,
+    @Value("\${app.ses.from:noreply@redirectgrupo.com.br}")  private val fromAddress: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val ses: SesClient by lazy {
-        val builder = SesClient.builder().region(Region.of(region))
-        if (accessKey.isNotBlank() && secretKey.isNotBlank()) {
-            builder.credentialsProvider(
-                StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey))
-            )
-        } else {
-            builder.credentialsProvider(DefaultCredentialsProvider.create())
-        }
-        builder.build()
+        SesClient.builder()
+            .region(Region.of(region))
+            .credentialsProvider(awsCredentialsProvider)
+            .build()
     }
 
     fun sendContactEmail(
