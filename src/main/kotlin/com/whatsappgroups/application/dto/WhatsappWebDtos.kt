@@ -25,7 +25,8 @@ data class CheckPhoneRequest(
 data class CheckPhoneResponse(
     val phone: String,
     val exists: Boolean,
-    val formattedPhone: String  // com código do país, ex: "5511999998888"
+    val formattedPhone: String,  // ex: "5511999998888"
+    val jid: String              // JID exato do WhatsApp para uso em groupCreate
 )
 
 // ──────── Message Broadcasting ────────

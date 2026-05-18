@@ -71,7 +71,8 @@ class WhatsappWebController(
             CheckPhoneResponse(
                 phone          = request.phone,
                 exists         = result.exists,
-                formattedPhone = result.phone
+                formattedPhone = result.phone,
+                jid            = result.jid
             )
         )
     }

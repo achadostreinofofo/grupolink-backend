@@ -13,7 +13,7 @@ data class AddGroupRequest(
     @field:NotBlank val name: String,
     val startingNumber: Int = 1,
     val profilePicUrl: String? = null,
-    val participantPhones: List<String>? = null  // números que entram no grupo ao criar no WhatsApp
+    val participantJids: List<String>? = null  // JIDs exatos do WhatsApp (ex: "5511999998888@s.whatsapp.net")
 )
 
 data class GroupResponse(

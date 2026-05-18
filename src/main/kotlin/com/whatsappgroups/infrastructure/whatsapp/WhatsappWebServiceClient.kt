@@ -19,7 +19,8 @@ data class WebServiceGroupResult(
 
 data class CheckPhoneResult(
     val exists: Boolean,
-    val phone: String
+    val phone: String,
+    val jid: String = "${phone}@s.whatsapp.net"
 )
 
 @Component
@@ -86,7 +87,8 @@ class WhatsappWebServiceClient(
 
         CheckPhoneResult(
             exists = resp["exists"] as? Boolean ?: false,
-            phone  = resp["phone"] as? String ?: phone
+            phone  = resp["phone"] as? String ?: phone,
+            jid    = resp["jid"] as? String ?: "${phone}@s.whatsapp.net"
         )
     }.getOrElse {
         log.warn("Failed to check phone $phone via session $sessionId: ${it.message}")

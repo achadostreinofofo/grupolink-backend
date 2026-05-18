@@ -114,7 +114,7 @@ class StructureUseCase(
         var groupStatus = GroupStatus.CREATING
 
         // Cria grupo real no WhatsApp via whatsapp-service (se houver participantes)
-        if (!request.participantPhones.isNullOrEmpty()) {
+        if (!request.participantJids.isNullOrEmpty()) {
             val session = sessionRepository
                 .findFirstByOwnerAndStatus(structure.owner, WebSessionStatus.AUTHENTICATED)
                 .orElse(null)
@@ -123,7 +123,7 @@ class StructureUseCase(
                 val result = whatsappWebClient.createGroup(
                     sessionId     = session.sessionId,
                     groupName     = fullName,
-                    participants  = request.participantPhones,
+                    participants  = request.participantJids,
                     profilePicUrl = structure.groupProfilePicUrl
                 )
                 if (result != null) {
