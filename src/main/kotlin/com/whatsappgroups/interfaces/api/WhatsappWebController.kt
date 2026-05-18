@@ -65,7 +65,6 @@ class WhatsappWebController(
 
         val normalized = "55${request.phone.replace(Regex("\\D"), "")}"
         val result = webServiceClient.checkPhoneNumber(session.sessionId, normalized)
-            ?: throw IllegalStateException("Não foi possível verificar o número. Tente novamente.")
 
         return ResponseEntity.ok(
             CheckPhoneResponse(

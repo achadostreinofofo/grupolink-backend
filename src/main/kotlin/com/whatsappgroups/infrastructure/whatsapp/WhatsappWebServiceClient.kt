@@ -20,7 +20,7 @@ data class WebServiceGroupResult(
 data class CheckPhoneResult(
     val exists: Boolean,
     val phone: String,
-    val jid: String = "${phone}@s.whatsapp.net"
+    val jid: String
 )
 
 @Component
@@ -77,22 +77,24 @@ class WhatsappWebServiceClient(
         false
     }
 
-    fun checkPhoneNumber(sessionId: String, phone: String): CheckPhoneResult? = runCatching {
-        val resp = client.post()
-            .uri("/check-number")
-            .bodyValue(mapOf("sessionId" to sessionId, "phone" to phone))
-            .retrieve()
-            .bodyToMono<Map<String, Any>>()
-            .block() ?: return null
+    fun checkPhoneNumber(sessionId: String, phone: String): CheckPhoneResult {
+        return runCatching {
+            val resp = client.post()
+                .uri("/check-number")
+                .bodyValue(mapOf("sessionId" to sessionId, "phone" to phone))
+                .retrieve()
+                .bodyToMono<Map<String, Any>>()
+                .block() ?: throw IllegalStateException("Resposta vazia do WhatsApp Service")
 
-        CheckPhoneResult(
-            exists = resp["exists"] as? Boolean ?: false,
-            phone  = resp["phone"] as? String ?: phone,
-            jid    = resp["jid"] as? String ?: "${phone}@s.whatsapp.net"
-        )
-    }.getOrElse {
-        log.warn("Failed to check phone $phone via session $sessionId: ${it.message}")
-        null
+            CheckPhoneResult(
+                exists = resp["exists"] as? Boolean ?: false,
+                phone  = resp["phone"] as? String ?: phone,
+                jid    = resp["jid"] as? String ?: "${phone}@s.whatsapp.net"
+            )
+        }.getOrElse {
+            log.warn("checkPhoneNumber failed for $phone via $sessionId: ${it.message}")
+            throw IllegalStateException("Erro ao verificar número: ${it.message}")
+        }
     }
 
     fun createGroup(sessionId: String, groupName: String, participants: List<String>, profilePicUrl: String?): WebServiceGroupResult? = runCatching {
