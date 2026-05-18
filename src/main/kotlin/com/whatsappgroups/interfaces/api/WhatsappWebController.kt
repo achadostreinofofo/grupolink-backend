@@ -64,15 +64,27 @@ class WhatsappWebController(
             .orElseThrow { IllegalStateException("Nenhuma sessão WhatsApp autenticada. Conecte via QR Code primeiro.") }
 
         val normalized = "55${request.phone.replace(Regex("\\D"), "")}"
-        val result = webServiceClient.checkPhoneNumber(session.sessionId, normalized)
 
-        return ResponseEntity.ok(
-            CheckPhoneResponse(
-                phone          = request.phone,
-                exists         = result.exists,
-                formattedPhone = result.phone,
-                jid            = result.jid
+        return try {
+            val result = webServiceClient.checkPhoneNumber(session.sessionId, normalized)
+            ResponseEntity.ok(
+                CheckPhoneResponse(
+                    phone          = request.phone,
+                    exists         = result.exists,
+                    formattedPhone = result.phone,
+                    jid            = result.jid
+                )
             )
-        )
+        } catch (e: IllegalStateException) {
+            // Sessão perdida na memória do serviço (reinicialização) — reconecta automaticamente
+            if (e.message?.contains("not authenticated", ignoreCase = true) == true ||
+                e.message?.contains("Session not authenticated", ignoreCase = true) == true) {
+                webServiceClient.createSession(session.sessionId)
+                throw IllegalStateException(
+                    "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente novamente."
+                )
+            }
+            throw e
+        }
     }
 }
