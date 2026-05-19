@@ -58,11 +58,13 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent updates status to ACTIVE and upgrades user plan on authorized`() {
-        val sub = subscription(plan = Plan.SMART)
+        val sub  = subscription(plan = Plan.SMART)
         val user = smartUser()
-
+        // Pre-create mock BEFORE calling whenever(...).thenReturn(mpSub)
+        // to avoid UnfinishedStubbingException (mpSubMock calls whenever() internally)
+        val mpSub = mpSubMock("authorized", "payer@mp.com")
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
-        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSubMock("authorized", "payer@mp.com"))
+        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
         whenever(userRepository.findById(userId)).thenReturn(Optional.of(user))
 
         useCase.processPreapprovalEvent(mpId)
@@ -74,11 +76,11 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent sets plan to FREE on paused`() {
-        val sub = subscription(plan = Plan.SMART)
-        val user = smartUser()
-
+        val sub   = subscription(plan = Plan.SMART)
+        val user  = smartUser()
+        val mpSub = mpSubMock("paused")
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
-        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSubMock("paused"))
+        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
         whenever(userRepository.findById(userId)).thenReturn(Optional.of(user))
 
         useCase.processPreapprovalEvent(mpId)
@@ -89,11 +91,11 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent sets plan to FREE on cancelled`() {
-        val sub = subscription()
-        val user = smartUser()
-
+        val sub   = subscription()
+        val user  = smartUser()
+        val mpSub = mpSubMock("cancelled")
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
-        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSubMock("cancelled"))
+        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
         whenever(userRepository.findById(userId)).thenReturn(Optional.of(user))
 
         useCase.processPreapprovalEvent(mpId)
@@ -104,11 +106,11 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent sets status to PENDING on pending`() {
-        val sub = subscription()
-        val user = smartUser()
-
+        val sub   = subscription()
+        val user  = smartUser()
+        val mpSub = mpSubMock("pending")
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
-        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSubMock("pending"))
+        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
         whenever(userRepository.findById(userId)).thenReturn(Optional.of(user))
 
         useCase.processPreapprovalEvent(mpId)
@@ -119,10 +121,9 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent does nothing on unknown status`() {
-        val sub = subscription()
+        val sub   = subscription()
         val mpSub = mock<Preapproval>()
         whenever(mpSub.status).thenReturn("unknown_status")
-
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
         whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
 
@@ -133,13 +134,12 @@ class PaymentWebhookUseCaseTest {
 
     @Test
     fun `processPreapprovalEvent handles missing user gracefully`() {
-        val sub = subscription()
-
+        val sub   = subscription()
+        val mpSub = mpSubMock("authorized")
         whenever(subscriptionRepository.findByMercadoPagoId(mpId)).thenReturn(sub)
-        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSubMock("authorized"))
+        whenever(mercadoPagoService.getSubscription(mpId)).thenReturn(mpSub)
         whenever(userRepository.findById(userId)).thenReturn(Optional.empty())
 
-        // Should not throw
         useCase.processPreapprovalEvent(mpId)
 
         assertThat(sub.status).isEqualTo(SubscriptionStatus.ACTIVE)
