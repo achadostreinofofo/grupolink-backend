@@ -38,6 +38,15 @@ class StructureController(private val structureUseCase: StructureUseCase) {
     ): ResponseEntity<StructureResponse> =
         ResponseEntity.ok(structureUseCase.getById(UUID.fromString(user.username), id))
 
+    @DeleteMapping("/{id}")
+    fun delete(
+        @AuthenticationPrincipal user: UserDetails,
+        @PathVariable id: UUID
+    ): ResponseEntity<Void> {
+        structureUseCase.delete(UUID.fromString(user.username), id)
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/{id}/groups")
     fun addGroup(
         @AuthenticationPrincipal user: UserDetails,

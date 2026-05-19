@@ -4,7 +4,7 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.util.UUID
 
-enum class MessageStatus { PENDING, SENT, FAILED, CANCELLED }
+enum class MessageStatus { DRAFT, PENDING, SENT, FAILED, CANCELLED }
 
 @Entity
 @Table(name = "scheduled_messages")
@@ -32,10 +32,10 @@ class ScheduledMessage(
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    var status: MessageStatus = MessageStatus.PENDING,
+    var status: MessageStatus = MessageStatus.DRAFT,
 
-    @Column(nullable = false)
-    var scheduledAt: LocalDateTime,
+    @Column
+    var scheduledAt: LocalDateTime? = null,
 
     @Column
     var executedAt: LocalDateTime? = null,

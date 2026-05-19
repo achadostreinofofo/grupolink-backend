@@ -12,6 +12,8 @@ interface WhatsappGroupRepository : JpaRepository<WhatsappGroup, UUID> {
     fun findAllByStructureOrderBySortOrderAsc(structure: Structure): List<WhatsappGroup>
     fun findAllByStructureAndStatusOrderBySortOrderAsc(structure: Structure, status: GroupStatus): List<WhatsappGroup>
 
+    fun findAllByWhatsappGroupIdIsNotNull(): List<WhatsappGroup>
+
     @Modifying
     @Query("UPDATE WhatsappGroup g SET g.memberCount = g.memberCount + 1, g.clickCount = g.clickCount + 1, g.updatedAt = CURRENT_TIMESTAMP WHERE g.id = :id")
     fun incrementMemberAndClick(id: UUID)

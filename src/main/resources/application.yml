@@ -1,4 +1,9 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:whatsapp_saas}
     username: ${DB_USER:postgres}
@@ -66,9 +71,36 @@ app:
     app-secret: ${WHATSAPP_APP_SECRET:}
     webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:mude-este-token}
 
+  whatsapp-service:
+    url: ${WHATSAPP_SERVICE_URL:http://localhost:3001}
+    secret: ${WHATSAPP_SERVICE_SECRET:dev-secret-change-in-production}
+
+  # Credenciais AWS únicas para todos os serviços (S3, SES)
+  # Se vazias, o SDK usa AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY do ambiente
+  aws:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+
+  s3:
+    bucket: ${S3_BUCKET:grupolink-media}
+    region: ${S3_REGION:us-east-1}
+    base-url: ${S3_BASE_URL:}
+
+  ses:
+    region: ${SES_REGION:${S3_REGION:us-east-1}}
+    from: ${SES_FROM_EMAIL:noreply@redirectgrupo.com.br}
+
+  contact:
+    email: ${CONTACT_EMAIL:contato@redirectgrupo.com.br}
+
   mercadopago:
     access-token: ${MP_ACCESS_TOKEN:}
     webhook-secret: ${MP_WEBHOOK_SECRET:}
+
+  mercadolivre:
+    client-id: ${ML_CLIENT_ID:}
+    client-secret: ${ML_CLIENT_SECRET:}
+    redirect-uri: ${ML_REDIRECT_URI:http://localhost:8080/api/ml/oauth/callback}
 
   rate-limit:
     redirect-limit: ${RATE_LIMIT_REDIRECT:30}   # máx requests por janela
@@ -76,6 +108,8 @@ app:
 
 server:
   port: ${PORT:8080}
+  tomcat:
+    max-http-form-post-size: 20MB
 
 springdoc:
   api-docs:

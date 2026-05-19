@@ -6,6 +6,7 @@ plugins {
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.spring") version "1.9.23"
     kotlin("plugin.jpa") version "1.9.23"
+    jacoco
 }
 
 group = "com.whatsappgroups"
@@ -32,6 +33,9 @@ dependencies {
     // Flyway
     implementation("org.flywaydb:flyway-core")
 
+    // Carrega automaticamente o arquivo .env em desenvolvimento local
+    implementation("me.paulschwarz:spring-dotenv:4.0.0")
+
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
@@ -55,6 +59,11 @@ dependencies {
     // RabbitMQ
     implementation("org.springframework.boot:spring-boot-starter-amqp")
 
+    // AWS S3 + SES
+    implementation("software.amazon.awssdk:s3:2.25.40")
+    implementation("software.amazon.awssdk:ses:2.25.40")
+    implementation("software.amazon.awssdk:sts:2.25.40")
+
     // Testes
     testImplementation("org.testcontainers:junit-jupiter:1.19.8")
     testImplementation("org.testcontainers:rabbitmq:1.19.8")
@@ -75,4 +84,60 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    classDirectories.setFrom(
+        files(classDirectories.files.map {
+            fileTree(it) {
+                exclude(
+                    "**/model/**",
+                    "**/repository/**",
+                    "**/dto/**",
+                    "**/*Config.*",
+                    "**/*Application.*",
+                    "**/*Consumer.*",
+                    "**/*Publisher.*",
+                    "**/*Message.*",
+                    "**/infrastructure/messaging/**",
+                    "**/infrastructure/oauth2/**"
+                )
+            }
+        })
+    )
+}
+
+tasks.jacocoTestCoverageVerification {
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                value = "COVEREDRATIO"
+                minimum = "0.85".toBigDecimal()
+            }
+        }
+    }
+}
+
+// Lê o .env e injeta cada variável como environment variable no processo do bootRun.
+// Garante funcionamento no Windows independente do spring-dotenv.
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    val envFile = project.file(".env")
+    if (envFile.exists()) {
+        envFile.readLines()
+            .filter { line -> line.isNotBlank() && !line.trimStart().startsWith("#") && "=" in line }
+            .forEach { line ->
+                val idx   = line.indexOf("=")
+                val key   = line.substring(0, idx).trim()
+                val value = line.substring(idx + 1).trim()
+                environment(key, value)
+            }
+    }
 }

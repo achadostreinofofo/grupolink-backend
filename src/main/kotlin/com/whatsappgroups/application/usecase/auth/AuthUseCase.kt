@@ -20,7 +20,7 @@ class AuthUseCase(
     @Transactional
     fun signUp(request: SignUpRequest): AuthResponse {
         if (userRepository.existsByEmail(request.email)) {
-            throw IllegalArgumentException("E-mail já cadastrado")
+            throw EmailAlreadyExistsException()
         }
 
         val formattedCpf = request.cpf

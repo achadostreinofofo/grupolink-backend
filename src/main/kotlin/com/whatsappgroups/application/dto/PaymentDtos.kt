@@ -16,5 +16,7 @@ data class SubscriptionStatusResponse(
     val plan: String,
     val status: String,
     val payerEmail: String?,
-    val periodEndDate: String?
+    val periodEndDate: String?,
+    val trialEndDate: String?,     // só para plano FREE (7 dias a partir de createdAt)
+    val trialDaysLeft: Int?        // dias restantes do trial; 0 = expirado
 )
