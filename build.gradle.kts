@@ -6,6 +6,7 @@ plugins {
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.spring") version "1.9.23"
     kotlin("plugin.jpa") version "1.9.23"
+    jacoco
 }
 
 group = "com.whatsappgroups"
@@ -83,6 +84,46 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    classDirectories.setFrom(
+        files(classDirectories.files.map {
+            fileTree(it) {
+                exclude(
+                    "**/model/**",
+                    "**/repository/**",
+                    "**/dto/**",
+                    "**/*Config.*",
+                    "**/*Application.*",
+                    "**/*Consumer.*",
+                    "**/*Publisher.*",
+                    "**/*Message.*",
+                    "**/infrastructure/messaging/**",
+                    "**/infrastructure/oauth2/**"
+                )
+            }
+        })
+    )
+}
+
+tasks.jacocoTestCoverageVerification {
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                value = "COVEREDRATIO"
+                minimum = "0.85".toBigDecimal()
+            }
+        }
+    }
 }
 
 // Lê o .env e injeta cada variável como environment variable no processo do bootRun.

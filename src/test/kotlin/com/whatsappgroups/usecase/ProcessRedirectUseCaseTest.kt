@@ -64,6 +64,7 @@ class ProcessRedirectUseCaseTest {
     @Test
     fun `new visitor is redirected to first available group`() {
         given(structureRepository.findBySlug("test-slug")).willReturn(structure)
+        given(structureRepository.getReferenceById(structure.id!!)).willReturn(structure)
         given(redisSessionService.getGroupForCookie("new-cookie", structure.id!!)).willReturn(null)
         given(groupRepository.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
             .willReturn(listOf(group))
@@ -109,6 +110,7 @@ class ProcessRedirectUseCaseTest {
     @Test
     fun `throws when no active groups available`() {
         given(structureRepository.findBySlug("test-slug")).willReturn(structure)
+        given(structureRepository.getReferenceById(structure.id!!)).willReturn(structure)
         given(redisSessionService.getGroupForCookie(any(), any())).willReturn(null)
         given(groupRepository.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
             .willReturn(emptyList())
@@ -123,17 +125,18 @@ class ProcessRedirectUseCaseTest {
         val group2 = WhatsappGroup(
             id = UUID.randomUUID(), structure = structure, name = "Group 2",
             inviteLink = "https://chat.whatsapp.com/group2",
-            maxMembers = 10, memberCount = 9, // 90% — acima do threshold
+            maxMembers = 10, memberCount = 9,
             status = GroupStatus.ACTIVE
         )
         val group3 = WhatsappGroup(
             id = UUID.randomUUID(), structure = structure, name = "Group 3",
             inviteLink = "https://chat.whatsapp.com/group3",
-            maxMembers = 10, memberCount = 2, // 20% — abaixo do threshold
+            maxMembers = 10, memberCount = 2,
             status = GroupStatus.ACTIVE
         )
 
         given(structureRepository.findBySlug("test-slug")).willReturn(structure)
+        given(structureRepository.getReferenceById(structure.id!!)).willReturn(structure)
         given(redisSessionService.getGroupForCookie(any(), any())).willReturn(null)
         given(groupRepository.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
             .willReturn(listOf(group2, group3))
@@ -142,7 +145,6 @@ class ProcessRedirectUseCaseTest {
 
         val result = useCase.execute(ctx("new-cookie"))
 
-        // Com group2 acima do threshold e group3 livre: os dois entram no pool (distribuição 2 em 2)
         assertThat(result.inviteLink).isIn(
             "https://chat.whatsapp.com/group2",
             "https://chat.whatsapp.com/group3"
@@ -153,15 +155,14 @@ class ProcessRedirectUseCaseTest {
     fun `stale cookie binding is cleared when group is inactive`() {
         val inactiveGroup = WhatsappGroup(
             id = group.id, structure = structure, name = "Group 1",
-            inviteLink = null, // sem invite link = inativo
+            inviteLink = null,
             maxMembers = 256, memberCount = 0, status = GroupStatus.INACTIVE
         )
 
         given(structureRepository.findBySlug("test-slug")).willReturn(structure)
+        given(structureRepository.getReferenceById(structure.id!!)).willReturn(structure)
         given(redisSessionService.getGroupForCookie("stale-cookie", structure.id!!)).willReturn(group.id!!)
         given(groupRepository.findById(group.id!!)).willReturn(Optional.of(inactiveGroup))
-
-        // Após limpar o binding, deve buscar um novo grupo — sem grupos disponíveis → exception
         given(groupRepository.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
             .willReturn(emptyList())
 

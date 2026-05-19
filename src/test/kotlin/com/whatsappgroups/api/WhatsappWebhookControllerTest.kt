@@ -1,9 +1,9 @@
 package com.whatsappgroups.api
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.whatsappgroups.domain.model.GroupStatus
-import com.whatsappgroups.domain.model.WhatsappGroup
+import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.domain.repository.GroupMemberRepository
+import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.domain.repository.WhatsappAccountRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
 import com.whatsappgroups.interfaces.api.WhatsappWebhookController
@@ -22,7 +22,14 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 
 @WebMvcTest(WhatsappWebhookController::class)
-@TestPropertySource(properties = ["app.whatsapp.webhook-verify-token=test-verify-token"])
+@TestPropertySource(properties = [
+    "app.whatsapp.webhook-verify-token=test-verify-token",
+    "app.jwt.secret=test-secret-256-bits-long-placeholder-for-testing-only",
+    "app.jwt.expiration-ms=3600000",
+    "app.mercadolivre.client-id=",
+    "app.mercadolivre.client-secret=",
+    "app.mercadolivre.redirect-uri=http://localhost"
+])
 class WhatsappWebhookControllerTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
@@ -31,8 +38,9 @@ class WhatsappWebhookControllerTest {
     @MockBean private lateinit var whatsappAccountRepository: WhatsappAccountRepository
     @MockBean private lateinit var groupRepository: WhatsappGroupRepository
     @MockBean private lateinit var memberRepository: GroupMemberRepository
-
-    // ---- GET: verificação do webhook ----
+    // Required by SecurityConfig (OAuth2SuccessHandler) and new controllers
+    @MockBean private lateinit var userRepository: UserRepository
+    @MockBean private lateinit var mlAccountUseCase: MercadoLivreAccountUseCase
 
     @Test
     fun `GET com token correto retorna challenge`() {
@@ -68,18 +76,13 @@ class WhatsappWebhookControllerTest {
         }
     }
 
-    // ---- POST: eventos de mensagem ----
-
     @Test
     fun `POST com payload vazio retorna 200`() {
         val payload = mapOf("object" to "whatsapp_business_account", "entry" to emptyList<Any>())
-
         mockMvc.post("/api/webhooks/whatsapp") {
             contentType = MediaType.APPLICATION_JSON
             content = mapper.writeValueAsString(payload)
-        }.andExpect {
-            status { isOk() }
-        }
+        }.andExpect { status { isOk() } }
     }
 
     @Test
@@ -89,11 +92,7 @@ class WhatsappWebhookControllerTest {
             "entry" to listOf(mapOf(
                 "changes" to listOf(mapOf(
                     "value" to mapOf(
-                        "messages" to listOf(mapOf(
-                            "from" to "5511999999999",
-                            "type" to "text",
-                            "text" to mapOf("body" to "Oi")
-                        ))
+                        "messages" to listOf(mapOf("from" to "5511999999999", "type" to "text", "text" to mapOf("body" to "Oi")))
                     )
                 ))
             ))
@@ -102,25 +101,13 @@ class WhatsappWebhookControllerTest {
         mockMvc.post("/api/webhooks/whatsapp") {
             contentType = MediaType.APPLICATION_JSON
             content = mapper.writeValueAsString(payload)
-        }.andExpect {
-            status { isOk() }
-        }
+        }.andExpect { status { isOk() } }
 
         verify(memberRepository, never()).save(any())
     }
 
     @Test
-    fun `POST com evento system group_member_add persiste membro`() {
-        val mockGroup = WhatsappGroup(
-            id = java.util.UUID.randomUUID(),
-            structure = mockk(),
-            name = "Test Group",
-            inviteLink = "https://chat.whatsapp.com/test",
-            maxMembers = 256,
-            memberCount = 5,
-            status = GroupStatus.ACTIVE
-        )
-
+    fun `POST com evento system group_member_add retorna 200`() {
         given(whatsappAccountRepository.findByPhoneNumberId("12345")).willReturn(null)
 
         val payload = mapOf(
@@ -142,13 +129,6 @@ class WhatsappWebhookControllerTest {
         mockMvc.post("/api/webhooks/whatsapp") {
             contentType = MediaType.APPLICATION_JSON
             content = mapper.writeValueAsString(payload)
-        }.andExpect {
-            status { isOk() }
-        }
+        }.andExpect { status { isOk() } }
     }
-}
-
-// Inline mock helper para testes que não precisam de Spring context completo
-private fun mockk(): com.whatsappgroups.domain.model.Structure {
-    return org.mockito.kotlin.mock()
 }
