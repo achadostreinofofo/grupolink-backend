@@ -123,6 +123,18 @@ class WhatsappWebServiceClient(
         }
     }
 
+    fun getGroupParticipantCount(sessionId: String, groupId: String): Int? = runCatching {
+        val resp = client.get()
+            .uri { it.path("/groups/{groupId}/participants/count").queryParam("sessionId", sessionId).build(groupId) }
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block() ?: return null
+        (resp["count"] as? Number)?.toInt()
+    }.getOrElse {
+        log.warn("Failed to get participant count for group $groupId via $sessionId: ${it.message}")
+        null
+    }
+
     fun sendTextMessage(sessionId: String, whatsappGroupId: String, text: String): Boolean = runCatching {
         client.post()
             .uri("/messages/text")
