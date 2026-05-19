@@ -84,3 +84,19 @@ tasks.withType<KotlinCompile> {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+// Lê o .env e injeta cada variável como environment variable no processo do bootRun.
+// Garante funcionamento no Windows independente do spring-dotenv.
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    val envFile = project.file(".env")
+    if (envFile.exists()) {
+        envFile.readLines()
+            .filter { line -> line.isNotBlank() && !line.trimStart().startsWith("#") && "=" in line }
+            .forEach { line ->
+                val idx   = line.indexOf("=")
+                val key   = line.substring(0, idx).trim()
+                val value = line.substring(idx + 1).trim()
+                environment(key, value)
+            }
+    }
+}
