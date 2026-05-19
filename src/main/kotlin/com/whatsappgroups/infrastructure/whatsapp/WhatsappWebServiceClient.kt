@@ -17,6 +17,12 @@ data class WebServiceGroupResult(
     val inviteLink: String
 )
 
+data class WebServiceGroupInfo(
+    val groupId: String,
+    val name: String,
+    val participants: Int
+)
+
 data class CheckPhoneResult(
     val exists: Boolean,
     val phone: String,
@@ -123,6 +129,25 @@ class WhatsappWebServiceClient(
         }
     }
 
+    fun listGroups(sessionId: String): List<WebServiceGroupInfo> = runCatching {
+        val resp = client.get()
+            .uri("/sessions/$sessionId/groups")
+            .retrieve()
+            .bodyToMono<List<Map<String, Any>>>()
+            .block() ?: emptyList()
+
+        resp.map { item ->
+            WebServiceGroupInfo(
+                groupId      = item["groupId"] as? String ?: "",
+                name         = item["name"] as? String ?: "(sem nome)",
+                participants = (item["participants"] as? Number)?.toInt() ?: 0
+            )
+        }.filter { it.groupId.isNotBlank() }
+    }.getOrElse {
+        log.warn("Failed to list groups for $sessionId: ${it.message}")
+        emptyList()
+    }
+
     fun getGroupParticipantCount(sessionId: String, groupId: String): Int? = runCatching {
         val resp = client.get()
             .uri { it.path("/groups/{groupId}/participants/count").queryParam("sessionId", sessionId).build(groupId) }
@@ -163,6 +188,24 @@ class WhatsappWebServiceClient(
         true
     }.getOrElse {
         log.error("Failed to send image via $sessionId to $whatsappGroupId: ${it.message}")
+        false
+    }
+
+    fun sendImageBase64Message(sessionId: String, whatsappGroupId: String, imageBase64: String, caption: String?): Boolean = runCatching {
+        client.post()
+            .uri("/messages/image")
+            .bodyValue(mapOf(
+                "sessionId"   to sessionId,
+                "groupId"     to whatsappGroupId,
+                "imageBase64" to imageBase64,
+                "caption"     to (caption ?: "")
+            ))
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block()
+        true
+    }.getOrElse {
+        log.error("Failed to send image base64 via $sessionId to $whatsappGroupId: ${it.message}")
         false
     }
 }

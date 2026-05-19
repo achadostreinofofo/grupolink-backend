@@ -1,7 +1,10 @@
 package com.whatsappgroups.interfaces.api
 
+import com.mercadopago.exceptions.MPApiException
+import com.mercadopago.exceptions.MPException
 import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import com.whatsappgroups.application.usecase.auth.EmailAlreadyExistsException
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -13,6 +16,8 @@ import java.security.GeneralSecurityException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidation(ex: MethodArgumentNotValidException): ResponseEntity<Map<String, Any>> {
@@ -49,6 +54,27 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException::class)
     fun handleIllegalState(ex: IllegalStateException): ResponseEntity<Map<String, String>> =
         ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mapOf("error" to (ex.message ?: "Serviço indisponível")))
+
+    @ExceptionHandler(MPApiException::class)
+    fun handleMercadoPagoApiError(ex: MPApiException): ResponseEntity<Map<String, String>> {
+        log.error("Erro na API do Mercado Pago: status=${ex.statusCode}, message=${ex.message}")
+        val message = when (ex.statusCode) {
+            400  -> "Dados inválidos enviados ao Mercado Pago."
+            401  -> "Token do Mercado Pago inválido ou ausente. Configure MP_ACCESS_TOKEN."
+            403  -> "Acesso não autorizado ao Mercado Pago. Verifique as permissões do token."
+            422  -> "Dados da assinatura rejeitados pelo Mercado Pago."
+            else -> "Erro na integração com o Mercado Pago (código ${ex.statusCode})."
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(mapOf("error" to "MERCADOPAGO_ERROR", "message" to message))
+    }
+
+    @ExceptionHandler(MPException::class)
+    fun handleMercadoPagoError(ex: MPException): ResponseEntity<Map<String, String>> {
+        log.error("Erro no SDK do Mercado Pago: ${ex.message}")
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(mapOf("error" to "MERCADOPAGO_ERROR", "message" to "Erro na integração com o Mercado Pago. Tente novamente mais tarde."))
+    }
 
     @ExceptionHandler(S3Exception::class)
     fun handleS3Error(ex: S3Exception): ResponseEntity<Map<String, String>> {

@@ -46,6 +46,7 @@ class SecurityConfig(
                     .requestMatchers(HttpMethod.GET, "/r/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/s/**").permitAll()
                     .requestMatchers("/api/webhooks/**").permitAll()
+                    .requestMatchers("/api/ml/oauth/callback").permitAll()
                     .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()

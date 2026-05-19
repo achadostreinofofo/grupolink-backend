@@ -54,8 +54,8 @@ class ScheduledMessageUseCase(
     fun update(userId: UUID, messageId: UUID, request: UpdateScheduledMessageRequest): ScheduledMessageResponse {
         val message = findOwned(userId, messageId)
 
-        if (message.status == MessageStatus.SENT || message.status == MessageStatus.FAILED) {
-            throw IllegalStateException("Não é possível editar uma mensagem já processada")
+        if (message.status == MessageStatus.CANCELLED) {
+            throw IllegalStateException("Não é possível editar uma mensagem cancelada")
         }
 
         message.title       = request.title
@@ -75,7 +75,6 @@ class ScheduledMessageUseCase(
         val structure = message.structure
             ?: throw IllegalStateException("Mensagem não está associada a uma estrutura")
 
-        if (message.status == MessageStatus.SENT) throw IllegalStateException("Mensagem já foi enviada")
         if (message.status == MessageStatus.CANCELLED) throw IllegalStateException("Mensagem foi cancelada")
 
         // Triggers async broadcast via RabbitMQ

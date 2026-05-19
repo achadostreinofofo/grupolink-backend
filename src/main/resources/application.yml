@@ -1,4 +1,9 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:whatsapp_saas}
     username: ${DB_USER:postgres}
@@ -92,12 +97,19 @@ app:
     access-token: ${MP_ACCESS_TOKEN:}
     webhook-secret: ${MP_WEBHOOK_SECRET:}
 
+  mercadolivre:
+    client-id: ${ML_CLIENT_ID:}
+    client-secret: ${ML_CLIENT_SECRET:}
+    redirect-uri: ${ML_REDIRECT_URI:http://localhost:8080/api/ml/oauth/callback}
+
   rate-limit:
     redirect-limit: ${RATE_LIMIT_REDIRECT:30}   # máx requests por janela
     window-seconds: ${RATE_LIMIT_WINDOW:60}       # tamanho da janela em segundos
 
 server:
   port: ${PORT:8080}
+  tomcat:
+    max-http-form-post-size: 20MB
 
 springdoc:
   api-docs:
