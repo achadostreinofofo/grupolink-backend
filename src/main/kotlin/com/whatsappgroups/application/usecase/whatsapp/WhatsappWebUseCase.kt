@@ -41,8 +41,8 @@ class WhatsappWebUseCase(
         if (!created) {
             sessionRepository.delete(session)
             throw IllegalStateException(
-                "WhatsApp Service não está disponível. " +
-                "Inicie o whatsapp-service com: cd whatsapp-service && npm install && node src/index.js"
+                "Não foi possível iniciar a sessão. Nosso serviço está temporariamente indisponível. " +
+                "Por favor, tente novamente em alguns instantes."
             )
         }
 
