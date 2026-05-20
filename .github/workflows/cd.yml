@@ -82,7 +82,6 @@ jobs:
             ML_CLIENT_ID=${{ secrets.ML_CLIENT_ID }}
             ML_CLIENT_SECRET=${{ secrets.ML_CLIENT_SECRET }}
             ML_REDIRECT_URI=${{ secrets.ML_REDIRECT_URI }}
-            WHATSAPP_SERVICE_SECRET=${{ secrets.WHATSAPP_SERVICE_SECRET }}
 
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
