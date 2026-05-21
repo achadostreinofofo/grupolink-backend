@@ -3,6 +3,7 @@ package com.whatsappgroups.interfaces.api
 import com.whatsappgroups.application.dto.AddGroupRequest
 import com.whatsappgroups.application.dto.CreateStructureRequest
 import com.whatsappgroups.application.dto.GroupResponse
+import com.whatsappgroups.application.dto.ImportGroupRequest
 import com.whatsappgroups.application.dto.StructureResponse
 import com.whatsappgroups.application.usecase.structure.StructureUseCase
 import io.swagger.v3.oas.annotations.tags.Tag
