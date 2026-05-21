@@ -57,12 +57,14 @@ class WhatsappWebController(
         @AuthenticationPrincipal user: UserDetails,
         @PathVariable sessionId: String
     ): ResponseEntity<List<Map<String, Any>>> {
-        val userId = UUID.fromString(user.username)
-        val owner  = userRepository.getReferenceById(userId)
-        sessionRepository
-            .findFirstByOwnerAndStatus(owner, WebSessionStatus.AUTHENTICATED)
-            .filter { it.sessionId == sessionId }
-            .orElseThrow { IllegalStateException("Sessão não encontrada ou não autenticada.") }
+        val userId  = UUID.fromString(user.username)
+        val session = sessionRepository
+            .findBySessionId(sessionId)
+            .orElseThrow { IllegalStateException("Sessão não encontrada.") }
+
+        if (session.owner.id != userId) throw IllegalAccessException("Acesso negado")
+        if (session.status != WebSessionStatus.AUTHENTICATED)
+            throw IllegalStateException("Sessão não está autenticada.")
 
         val groups = webServiceClient.listGroups(sessionId)
         return ResponseEntity.ok(groups.map {
