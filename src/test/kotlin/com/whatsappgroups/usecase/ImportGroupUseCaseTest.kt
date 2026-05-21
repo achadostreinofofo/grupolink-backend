@@ -7,7 +7,6 @@ import com.whatsappgroups.application.usecase.structure.StructureUseCase
 import com.whatsappgroups.domain.model.*
 import com.whatsappgroups.domain.repository.*
 import com.whatsappgroups.infrastructure.whatsapp.WebServiceGroupDetail
-import com.whatsappgroups.infrastructure.whatsapp.WebServiceGroupResult
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -44,29 +43,42 @@ class ImportGroupUseCaseTest {
             .thenReturn(emptyList())
     }
 
+    private fun savedGroup(
+        name: String,
+        jid: String? = null,
+        inviteLink: String? = null,
+        status: GroupStatus = GroupStatus.ACTIVE
+    ) = WhatsappGroup(
+        id = UUID.randomUUID(),   // id não-nulo evita NPE em toResponse()
+        structure = structure,
+        name = name,
+        whatsappGroupId = jid,
+        inviteLink = inviteLink,
+        maxMembers = 256,
+        sortOrder = 0,
+        status = status
+    )
+
     // ──────────────────────────── importGroup ────────────────────────────
 
     @Test
     fun `importGroup - sucesso salva grupo como ACTIVE com jid e inviteLink`() {
         val jid = "111@g.us"
+        val link = "https://chat.whatsapp.com/ABC"
+        // groupInfo com inviteLink → não chama getGroupInviteLink
         val groupInfo = WebServiceGroupDetail(
             groupId = jid, name = "Treino Fofo #1", participants = 10,
-            inviteLink = "https://chat.whatsapp.com/ABC", profilePicUrl = "https://pic.url/g.jpg"
+            inviteLink = link, profilePicUrl = "https://pic.url/g.jpg"
         )
         whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
-
-        val saved = WhatsappGroup(
-            structure = structure, name = "Treino Fofo #1", whatsappGroupId = jid,
-            inviteLink = "https://chat.whatsapp.com/ABC", maxMembers = 256, sortOrder = 0,
-            status = GroupStatus.ACTIVE
-        )
-        whenever(groupRepo.save(any())).thenReturn(saved)
+        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, link))
 
         val result = useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
 
         assert(result.status == "ACTIVE")
         assert(result.whatsappGroupId == jid)
         verify(groupRepo).save(argThat { status == GroupStatus.ACTIVE && whatsappGroupId == jid })
+        verify(whatsappClient, never()).getGroupInviteLink(any(), any())
     }
 
     @Test
@@ -77,11 +89,7 @@ class ImportGroupUseCaseTest {
             groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null
         )
         whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
-        val saved = WhatsappGroup(
-            structure = structure, name = "Treino Fofo #1", whatsappGroupId = jid,
-            inviteLink = customLink, maxMembers = 256, sortOrder = 0, status = GroupStatus.ACTIVE
-        )
-        whenever(groupRepo.save(any())).thenReturn(saved)
+        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, customLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid, inviteLink = customLink))
 
@@ -90,17 +98,13 @@ class ImportGroupUseCaseTest {
     }
 
     @Test
-    fun `importGroup - busca inviteLink automaticamente quando omitido`() {
+    fun `importGroup - busca inviteLink automaticamente quando groupInfo e request sao null`() {
         val jid = "333@g.us"
         val autoLink = "https://chat.whatsapp.com/AUTO"
         val groupInfo = WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
         whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
         whenever(whatsappClient.getGroupInviteLink("sess-1", jid)).thenReturn(autoLink)
-        val saved = WhatsappGroup(
-            structure = structure, name = "Treino Fofo #1", whatsappGroupId = jid,
-            inviteLink = autoLink, maxMembers = 256, sortOrder = 0, status = GroupStatus.ACTIVE
-        )
-        whenever(groupRepo.save(any())).thenReturn(saved)
+        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, autoLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
 
@@ -109,9 +113,8 @@ class ImportGroupUseCaseTest {
 
     @Test
     fun `importGroup - lanca erro se estrutura ja tem grupo ativo`() {
-        val existingGroup = WhatsappGroup(structure = structure, name = "G #1", maxMembers = 256, sortOrder = 0)
         whenever(groupRepo.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
-            .thenReturn(listOf(existingGroup))
+            .thenReturn(listOf(savedGroup("G #1")))
 
         assertThrows<IllegalStateException> {
             useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = "444@g.us"))
@@ -132,9 +135,8 @@ class ImportGroupUseCaseTest {
 
     @Test
     fun `addGroup - lanca erro quando estrutura ja tem grupo ativo`() {
-        val existingGroup = WhatsappGroup(structure = structure, name = "G #1", maxMembers = 256, sortOrder = 0)
         whenever(groupRepo.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
-            .thenReturn(listOf(existingGroup))
+            .thenReturn(listOf(savedGroup("G #1")))
 
         assertThrows<IllegalStateException> {
             useCase.addGroup(ownerId, structureId, AddGroupRequest(name = "Treino Fofo", profilePicUrl = "https://pic.url"))
@@ -143,11 +145,9 @@ class ImportGroupUseCaseTest {
 
     @Test
     fun `addGroup - permite criar quando nao ha grupos ativos`() {
-        val saved = WhatsappGroup(
-            structure = structure, name = "Treino Fofo #1", maxMembers = 256,
-            sortOrder = 0, status = GroupStatus.CREATING
+        whenever(groupRepo.save(any())).thenReturn(
+            savedGroup("Treino Fofo #1", status = GroupStatus.CREATING)
         )
-        whenever(groupRepo.save(any())).thenReturn(saved)
 
         val result = useCase.addGroup(
             ownerId, structureId,
