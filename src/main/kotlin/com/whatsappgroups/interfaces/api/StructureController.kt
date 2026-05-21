@@ -55,4 +55,13 @@ class StructureController(private val structureUseCase: StructureUseCase) {
     ): ResponseEntity<GroupResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
             .body(structureUseCase.addGroup(UUID.fromString(user.username), id, request))
+
+    @PostMapping("/{id}/groups/import")
+    fun importGroup(
+        @AuthenticationPrincipal user: UserDetails,
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ImportGroupRequest
+    ): ResponseEntity<GroupResponse> =
+        ResponseEntity.status(HttpStatus.CREATED)
+            .body(structureUseCase.importGroup(UUID.fromString(user.username), id, request))
 }

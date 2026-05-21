@@ -20,7 +20,16 @@ data class WebServiceGroupResult(
 data class WebServiceGroupInfo(
     val groupId: String,
     val name: String,
-    val participants: Int
+    val participants: Int,
+    val profilePicUrl: String? = null
+)
+
+data class WebServiceGroupDetail(
+    val groupId: String,
+    val name: String,
+    val participants: Int,
+    val inviteLink: String? = null,
+    val profilePicUrl: String? = null
 )
 
 data class CheckPhoneResult(
@@ -127,6 +136,38 @@ class WhatsappWebServiceClient(
             log.error("createGroup failed for session $sessionId: ${it.message}")
             throw IllegalStateException("Erro ao criar grupo no WhatsApp: ${it.message}")
         }
+    }
+
+    fun getGroupInfo(sessionId: String, groupId: String): WebServiceGroupDetail = runCatching {
+        val resp = client.get()
+            .uri { it.path("/sessions/{sessionId}/groups/{groupId}").build(sessionId, groupId) }
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block() ?: throw IllegalStateException("Grupo não encontrado")
+
+        WebServiceGroupDetail(
+            groupId       = resp["groupId"] as? String ?: groupId,
+            name          = resp["name"] as? String ?: "",
+            participants  = (resp["participants"] as? Number)?.toInt() ?: 0,
+            inviteLink    = resp["inviteLink"] as? String,
+            profilePicUrl = resp["profilePicUrl"] as? String
+        )
+    }.getOrElse {
+        log.error("getGroupInfo failed for $groupId: ${it.message}")
+        throw IllegalStateException("Não foi possível obter informações do grupo: ${it.message}")
+    }
+
+    fun getGroupInviteLink(sessionId: String, groupId: String): String = runCatching {
+        val resp = client.get()
+            .uri { it.path("/groups/{groupId}/invite-link").queryParam("sessionId", sessionId).build(groupId) }
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block() ?: throw IllegalStateException("Resposta vazia")
+
+        resp["inviteLink"] as? String ?: throw IllegalStateException("inviteLink ausente na resposta")
+    }.getOrElse {
+        log.error("getGroupInviteLink failed for $groupId: ${it.message}")
+        throw IllegalStateException("Não foi possível obter o link de convite: ${it.message}")
     }
 
     fun listGroups(sessionId: String): List<WebServiceGroupInfo> = runCatching {

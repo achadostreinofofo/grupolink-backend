@@ -97,6 +97,15 @@ class StructureUseCase(
 
         if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
 
+        // Apenas o primeiro grupo pode ser adicionado manualmente
+        val hasActiveGroups = groupRepository
+            .findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE)
+            .isNotEmpty()
+        if (hasActiveGroups) throw IllegalStateException(
+            "Apenas o primeiro grupo pode ser criado manualmente. " +
+            "Os grupos seguintes são criados automaticamente quando o atual atingir a capacidade."
+        )
+
         val isFirstGroup = structure.groupNamePrefix == null
 
         // Primeiro grupo: salva prefixo, número inicial e foto de perfil
@@ -180,6 +189,58 @@ class StructureUseCase(
             )
         )
 
+        return group.toResponse()
+    }
+
+    @Transactional
+    fun importGroup(userId: UUID, structureId: UUID, request: ImportGroupRequest): GroupResponse {
+        val structure = structureRepository.findById(structureId)
+            .orElseThrow { NoSuchElementException("Estrutura não encontrada") }
+
+        if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
+
+        // Apenas o primeiro grupo pode ser importado manualmente
+        val hasActiveGroups = groupRepository
+            .findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE)
+            .isNotEmpty()
+        if (hasActiveGroups) throw IllegalStateException(
+            "Apenas o primeiro grupo pode ser importado manualmente. " +
+            "Os grupos seguintes são criados automaticamente."
+        )
+
+        val session = sessionRepository
+            .findFirstByOwnerAndStatus(structure.owner, WebSessionStatus.AUTHENTICATED)
+            .orElseThrow {
+                IllegalStateException("Nenhuma sessão WhatsApp autenticada. Conecte uma conta em WhatsApp → QR Code.")
+            }
+
+        // Busca info e invite link do grupo via whatsapp-service
+        val groupInfo = whatsappWebClient.getGroupInfo(session.sessionId, request.whatsappGroupId)
+        val inviteLink = request.inviteLink
+            ?: whatsappWebClient.getGroupInviteLink(session.sessionId, request.whatsappGroupId)
+
+        val isFirstGroup = structure.groupNamePrefix == null
+        val startingNumber = 1
+
+        if (isFirstGroup) {
+            structure.groupNamePrefix    = groupInfo.name.substringBeforeLast(" #").trim()
+            structure.nextGroupNumber    = startingNumber + 1
+            structure.groupProfilePicUrl = groupInfo.profilePicUrl
+        }
+
+        val group = groupRepository.save(
+            WhatsappGroup(
+                structure       = structure,
+                name            = groupInfo.name,
+                whatsappGroupId = request.whatsappGroupId,
+                inviteLink      = inviteLink,
+                maxMembers      = structure.maxMembersPerGroup,
+                sortOrder       = structure.groups.size,
+                status          = GroupStatus.ACTIVE
+            )
+        )
+
+        log.info("Grupo importado: '${group.name}' (jid=${request.whatsappGroupId})")
         return group.toResponse()
     }
 

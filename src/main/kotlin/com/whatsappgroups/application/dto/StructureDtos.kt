@@ -13,7 +13,12 @@ data class AddGroupRequest(
     @field:NotBlank val name: String,
     val startingNumber: Int = 1,
     val profilePicUrl: String? = null,
-    val participantJids: List<String>? = null  // JIDs exatos do WhatsApp (ex: "5511999998888@s.whatsapp.net")
+    val participantJids: List<String>? = null
+)
+
+data class ImportGroupRequest(
+    @field:NotBlank val whatsappGroupId: String,  // JID: "XXXXX@g.us"
+    val inviteLink: String? = null                // opcional — buscado automaticamente se omitido
 )
 
 data class GroupResponse(
