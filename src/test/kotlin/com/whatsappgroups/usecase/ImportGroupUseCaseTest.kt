@@ -16,11 +16,11 @@ import java.util.*
 
 class ImportGroupUseCaseTest {
 
-    private val structureRepo   = mock<StructureRepository>()
-    private val groupRepo       = mock<WhatsappGroupRepository>()
-    private val userRepo        = mock<UserRepository>()
-    private val sessionRepo     = mock<WhatsappWebSessionRepository>()
-    private val whatsappClient  = mock<WhatsappWebServiceClient>()
+    private val structureRepo  = mock<StructureRepository>()
+    private val groupRepo      = mock<WhatsappGroupRepository>()
+    private val userRepo       = mock<UserRepository>()
+    private val sessionRepo    = mock<WhatsappWebSessionRepository>()
+    private val whatsappClient = mock<WhatsappWebServiceClient>()
 
     private val useCase = StructureUseCase(
         structureRepo, groupRepo, userRepo, sessionRepo, whatsappClient, "http://localhost:8080"
@@ -49,7 +49,7 @@ class ImportGroupUseCaseTest {
         inviteLink: String? = null,
         status: GroupStatus = GroupStatus.ACTIVE
     ) = WhatsappGroup(
-        id = UUID.randomUUID(),   // id não-nulo evita NPE em toResponse()
+        id = UUID.randomUUID(),
         structure = structure,
         name = name,
         whatsappGroupId = jid,
@@ -65,12 +65,12 @@ class ImportGroupUseCaseTest {
     fun `importGroup - sucesso salva grupo como ACTIVE com jid e inviteLink`() {
         val jid = "111@g.us"
         val link = "https://chat.whatsapp.com/ABC"
-        // groupInfo com inviteLink → não chama getGroupInviteLink
         val groupInfo = WebServiceGroupDetail(
             groupId = jid, name = "Treino Fofo #1", participants = 10,
             inviteLink = link, profilePicUrl = "https://pic.url/g.jpg"
         )
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
+        // doReturn evita NPE em tipos Kotlin não-anuláveis durante setup do stub
+        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, link))
 
         val result = useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
@@ -85,10 +85,8 @@ class ImportGroupUseCaseTest {
     fun `importGroup - usa inviteLink da request quando fornecido`() {
         val jid = "222@g.us"
         val customLink = "https://chat.whatsapp.com/CUSTOM"
-        val groupInfo = WebServiceGroupDetail(
-            groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null
-        )
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
+        val groupInfo = WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null)
+        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, customLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid, inviteLink = customLink))
@@ -102,8 +100,8 @@ class ImportGroupUseCaseTest {
         val jid = "333@g.us"
         val autoLink = "https://chat.whatsapp.com/AUTO"
         val groupInfo = WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(groupInfo)
-        whenever(whatsappClient.getGroupInviteLink("sess-1", jid)).thenReturn(autoLink)
+        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
+        doReturn(autoLink).whenever(whatsappClient).getGroupInviteLink("sess-1", jid)
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, autoLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
