@@ -120,7 +120,7 @@ class MonitoredGroupUseCase(
             .map { it.whatsappGroupId }
             .toSet()
 
-        return webServiceClient.listGroups(sessionId).map { g ->
+        return webServiceClient.listGroups(sessionId, onlyOwned = false).map { g ->
             AvailableGroupResponse(
                 groupId          = g.groupId,
                 name             = g.name,

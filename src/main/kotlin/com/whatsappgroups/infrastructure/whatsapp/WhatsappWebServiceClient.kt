@@ -170,9 +170,9 @@ class WhatsappWebServiceClient(
         null
     }
 
-    fun listGroups(sessionId: String): List<WebServiceGroupInfo> = runCatching {
+    fun listGroups(sessionId: String, onlyOwned: Boolean = true): List<WebServiceGroupInfo> = runCatching {
         val resp = client.get()
-            .uri("/sessions/$sessionId/groups")
+            .uri("/sessions/$sessionId/groups?onlyOwned=$onlyOwned")
             .retrieve()
             .bodyToMono<List<Map<String, Any>>>()
             .block() ?: emptyList()
