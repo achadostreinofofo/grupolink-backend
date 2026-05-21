@@ -216,6 +216,7 @@ class StructureUseCase(
 
         // Busca info e invite link do grupo via whatsapp-service
         val groupInfo = whatsappWebClient.getGroupInfo(session.sessionId, request.whatsappGroupId)
+            ?: throw IllegalStateException("Não foi possível obter informações do grupo '${request.whatsappGroupId}'. Verifique se a sessão WhatsApp está ativa.")
         val inviteLink = request.inviteLink
             ?: groupInfo.inviteLink
             ?: whatsappWebClient.getGroupInviteLink(session.sessionId, request.whatsappGroupId)

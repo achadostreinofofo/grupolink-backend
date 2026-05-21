@@ -65,12 +65,11 @@ class ImportGroupUseCaseTest {
     fun `importGroup - sucesso salva grupo como ACTIVE com jid e inviteLink`() {
         val jid = "111@g.us"
         val link = "https://chat.whatsapp.com/ABC"
-        val groupInfo = WebServiceGroupDetail(
-            groupId = jid, name = "Treino Fofo #1", participants = 10,
-            inviteLink = link, profilePicUrl = "https://pic.url/g.jpg"
+        // getGroupInfo retorna WebServiceGroupDetail? — whenever funciona com tipo anulável
+        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
+            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 10,
+                inviteLink = link, profilePicUrl = "https://pic.url/g.jpg")
         )
-        // doReturn evita NPE em tipos Kotlin não-anuláveis durante setup do stub
-        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, link))
 
         val result = useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
@@ -85,8 +84,9 @@ class ImportGroupUseCaseTest {
     fun `importGroup - usa inviteLink da request quando fornecido`() {
         val jid = "222@g.us"
         val customLink = "https://chat.whatsapp.com/CUSTOM"
-        val groupInfo = WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null)
-        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
+        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
+            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null)
+        )
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, customLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid, inviteLink = customLink))
@@ -99,14 +99,24 @@ class ImportGroupUseCaseTest {
     fun `importGroup - busca inviteLink automaticamente quando groupInfo e request sao null`() {
         val jid = "333@g.us"
         val autoLink = "https://chat.whatsapp.com/AUTO"
-        val groupInfo = WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
-        doReturn(groupInfo).whenever(whatsappClient).getGroupInfo("sess-1", jid)
-        doReturn(autoLink).whenever(whatsappClient).getGroupInviteLink("sess-1", jid)
+        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
+            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
+        )
+        whenever(whatsappClient.getGroupInviteLink("sess-1", jid)).thenReturn(autoLink)
         whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, autoLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
 
         verify(whatsappClient).getGroupInviteLink("sess-1", jid)
+    }
+
+    @Test
+    fun `importGroup - lanca erro se getGroupInfo retorna null`() {
+        whenever(whatsappClient.getGroupInfo(any(), any())).thenReturn(null)
+
+        assertThrows<IllegalStateException> {
+            useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = "000@g.us"))
+        }
     }
 
     @Test

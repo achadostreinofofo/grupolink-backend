@@ -138,12 +138,12 @@ class WhatsappWebServiceClient(
         }
     }
 
-    fun getGroupInfo(sessionId: String, groupId: String): WebServiceGroupDetail = runCatching {
+    fun getGroupInfo(sessionId: String, groupId: String): WebServiceGroupDetail? = runCatching {
         val resp = client.get()
             .uri { it.path("/sessions/{sessionId}/groups/{groupId}").build(sessionId, groupId) }
             .retrieve()
             .bodyToMono<Map<String, Any>>()
-            .block() ?: throw IllegalStateException("Grupo não encontrado")
+            .block() ?: return null
 
         WebServiceGroupDetail(
             groupId       = resp["groupId"] as? String ?: groupId,
@@ -154,20 +154,20 @@ class WhatsappWebServiceClient(
         )
     }.getOrElse {
         log.error("getGroupInfo failed for $groupId: ${it.message}")
-        throw IllegalStateException("Não foi possível obter informações do grupo: ${it.message}")
+        null
     }
 
-    fun getGroupInviteLink(sessionId: String, groupId: String): String = runCatching {
+    fun getGroupInviteLink(sessionId: String, groupId: String): String? = runCatching {
         val resp = client.get()
             .uri { it.path("/groups/{groupId}/invite-link").queryParam("sessionId", sessionId).build(groupId) }
             .retrieve()
             .bodyToMono<Map<String, Any>>()
-            .block() ?: throw IllegalStateException("Resposta vazia")
+            .block() ?: return null
 
-        resp["inviteLink"] as? String ?: throw IllegalStateException("inviteLink ausente na resposta")
+        resp["inviteLink"] as? String
     }.getOrElse {
         log.error("getGroupInviteLink failed for $groupId: ${it.message}")
-        throw IllegalStateException("Não foi possível obter o link de convite: ${it.message}")
+        null
     }
 
     fun listGroups(sessionId: String): List<WebServiceGroupInfo> = runCatching {
