@@ -17,8 +17,10 @@ data class AddGroupRequest(
 )
 
 data class ImportGroupRequest(
-    @field:NotBlank val whatsappGroupId: String,  // JID: "XXXXX@g.us"
-    val inviteLink: String? = null                // opcional — buscado automaticamente se omitido
+    @field:NotBlank val whatsappGroupId: String,
+    val inviteLink: String? = null,
+    val maxMembersPerGroup: Int? = null,    // null = mantém padrão da estrutura (256)
+    val fillThreshold: Double? = null       // null = mantém padrão (0.80); range 0.1–0.99
 )
 
 data class GroupResponse(

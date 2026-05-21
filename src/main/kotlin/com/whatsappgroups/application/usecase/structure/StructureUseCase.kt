@@ -221,12 +221,23 @@ class StructureUseCase(
             ?: groupInfo.inviteLink
             ?: whatsappWebClient.getGroupInviteLink(session.sessionId, request.whatsappGroupId)
 
+        // Aplica configurações do usuário (se fornecidas) na estrutura
+        request.maxMembersPerGroup?.let { max ->
+            require(max in groupInfo.participants..1024) {
+                "maxMembersPerGroup deve ser entre ${groupInfo.participants} (participantes atuais) e 1024"
+            }
+            structure.maxMembersPerGroup = max
+        }
+        request.fillThreshold?.let { threshold ->
+            require(threshold in 0.10..0.99) { "fillThreshold deve ser entre 10% e 99%" }
+            structure.fillThreshold = threshold
+        }
+
         val isFirstGroup = structure.groupNamePrefix == null
-        val startingNumber = 1
 
         if (isFirstGroup) {
             structure.groupNamePrefix    = groupInfo.name.substringBeforeLast(" #").trim()
-            structure.nextGroupNumber    = startingNumber + 1
+            structure.nextGroupNumber    = 2
             structure.groupProfilePicUrl = groupInfo.profilePicUrl
         }
 
@@ -242,7 +253,10 @@ class StructureUseCase(
             )
         )
 
-        log.info("Grupo importado: '${group.name}' (jid=${request.whatsappGroupId})")
+        log.info(
+            "Grupo importado: '${group.name}' (jid=${request.whatsappGroupId}, " +
+            "maxMembers=${structure.maxMembersPerGroup}, fillThreshold=${structure.fillThreshold})"
+        )
         return group.toResponse()
     }
 
