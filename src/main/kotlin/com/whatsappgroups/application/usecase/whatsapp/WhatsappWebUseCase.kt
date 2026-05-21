@@ -97,6 +97,26 @@ class WhatsappWebUseCase(
         sessionRepository.delete(session)
     }
 
+    @Transactional
+    fun reconnectSession(userId: UUID, sessionId: String): SessionStatusResponse {
+        val session = sessionRepository.findBySessionId(sessionId)
+            .orElseThrow { NoSuchElementException("Sessão não encontrada") }
+
+        if (session.owner.id != userId) throw IllegalAccessException("Acesso negado")
+
+        // Tenta recriar o socket — se as credenciais ainda estão em disco, Baileys reconecta sem QR
+        serviceClient.createSession(sessionId)
+        session.status    = WebSessionStatus.WAITING_SCAN
+        session.updatedAt = LocalDateTime.now()
+
+        return SessionStatusResponse(
+            sessionId = sessionId,
+            status    = session.status.name,
+            qrBase64  = null,
+            phone     = session.phone
+        )
+    }
+
     fun listSessions(userId: UUID): List<SessionStatusResponse> {
         val owner = userRepository.getReferenceById(userId)
         // Retorna apenas sessões ativas (WAITING_SCAN ou AUTHENTICATED)
