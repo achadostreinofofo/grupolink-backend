@@ -59,18 +59,22 @@ class ImportGroupUseCaseTest {
         status = status
     )
 
+    // `save()` é @NonNull Spring Data → cast para nullable para evitar NPE no setup do stub
+    private fun stubSave(group: WhatsappGroup) {
+        whenever(groupRepo.save(any()) as WhatsappGroup?).thenReturn(group)
+    }
+
     // ──────────────────────────── importGroup ────────────────────────────
 
     @Test
     fun `importGroup - sucesso salva grupo como ACTIVE com jid e inviteLink`() {
         val jid = "111@g.us"
         val link = "https://chat.whatsapp.com/ABC"
-        // getGroupInfo retorna WebServiceGroupDetail? — whenever funciona com tipo anulável
         whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
             WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 10,
                 inviteLink = link, profilePicUrl = "https://pic.url/g.jpg")
         )
-        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, link))
+        stubSave(savedGroup("Treino Fofo #1", jid, link))
 
         val result = useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
 
@@ -87,7 +91,7 @@ class ImportGroupUseCaseTest {
         whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
             WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null)
         )
-        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, customLink))
+        stubSave(savedGroup("Treino Fofo #1", jid, customLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid, inviteLink = customLink))
 
@@ -103,7 +107,7 @@ class ImportGroupUseCaseTest {
             WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
         )
         whenever(whatsappClient.getGroupInviteLink("sess-1", jid)).thenReturn(autoLink)
-        whenever(groupRepo.save(any())).thenReturn(savedGroup("Treino Fofo #1", jid, autoLink))
+        stubSave(savedGroup("Treino Fofo #1", jid, autoLink))
 
         useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
 
@@ -153,9 +157,7 @@ class ImportGroupUseCaseTest {
 
     @Test
     fun `addGroup - permite criar quando nao ha grupos ativos`() {
-        whenever(groupRepo.save(any())).thenReturn(
-            savedGroup("Treino Fofo #1", status = GroupStatus.CREATING)
-        )
+        stubSave(savedGroup("Treino Fofo #1", status = GroupStatus.CREATING))
 
         val result = useCase.addGroup(
             ownerId, structureId,
