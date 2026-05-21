@@ -43,6 +43,13 @@ class WhatsappWebController(
     ): ResponseEntity<List<SessionStatusResponse>> =
         ResponseEntity.ok(useCase.listSessions(UUID.fromString(user.username)))
 
+    @PostMapping("/sessions/{sessionId}/reconnect")
+    fun reconnect(
+        @AuthenticationPrincipal user: UserDetails,
+        @PathVariable sessionId: String
+    ): ResponseEntity<SessionStatusResponse> =
+        ResponseEntity.ok(useCase.reconnectSession(UUID.fromString(user.username), sessionId))
+
     @DeleteMapping("/sessions/{sessionId}")
     fun disconnect(
         @AuthenticationPrincipal user: UserDetails,
