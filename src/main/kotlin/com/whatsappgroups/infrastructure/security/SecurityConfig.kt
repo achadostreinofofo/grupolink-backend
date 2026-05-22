@@ -4,6 +4,7 @@ import com.whatsappgroups.infrastructure.oauth2.OAuth2SuccessHandler
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -14,11 +15,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
-import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient
-import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest
+import org.springframework.security.oauth2.client.endpoint.DefaultAuthorizationCodeTokenResponseClient
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import java.time.Duration
 
 @Configuration
 @EnableWebSecurity
@@ -29,9 +30,6 @@ class SecurityConfig(
 ) {
     @Autowired(required = false)
     private var clientRegistrationRepository: ClientRegistrationRepository? = null
-
-    @Autowired(required = false)
-    private var googleOAuth2AccessTokenResponseClient: OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest>? = null
 
     private val googleOAuth2Enabled get() = googleClientId.isNotBlank()
 
@@ -77,11 +75,16 @@ class SecurityConfig(
 
         // Só ativa Google OAuth se o client-id estiver configurado
         if (googleOAuth2Enabled && clientRegistrationRepository != null) {
+            val restTemplate = RestTemplateBuilder()
+                .setConnectTimeout(Duration.ofSeconds(10))
+                .setReadTimeout(Duration.ofSeconds(30))
+                .build()
+            val tokenResponseClient = DefaultAuthorizationCodeTokenResponseClient()
+            tokenResponseClient.setRestOperations(restTemplate)
+
             http.oauth2Login { oauth2 ->
                 oauth2.successHandler(oauth2SuccessHandler)
-                googleOAuth2AccessTokenResponseClient?.let { client ->
-                    oauth2.tokenEndpoint { it.accessTokenResponseClient(client) }
-                }
+                oauth2.tokenEndpoint { it.accessTokenResponseClient(tokenResponseClient) }
             }
         }
 
