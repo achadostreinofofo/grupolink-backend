@@ -15,7 +15,9 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod
 @ConditionalOnExpression("'\${app.oauth2.google.client-id:}' != ''")
 class GoogleOAuth2Config(
     @Value("\${app.oauth2.google.client-id}") private val clientId: String,
-    @Value("\${app.oauth2.google.client-secret}") private val clientSecret: String
+    @Value("\${app.oauth2.google.client-secret}") private val clientSecret: String,
+    @Value("\${app.oauth2.google.redirect-uri:https://redirectgrupo.com.br/login/oauth2/code/google}")
+    private val redirectUri: String
 ) {
 
     @Bean
@@ -28,7 +30,7 @@ class GoogleOAuth2Config(
             .clientSecret(clientSecret)
             .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
             .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-            .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+            .redirectUri(redirectUri)
             .scope("openid", "email", "profile")
             .authorizationUri("https://accounts.google.com/o/oauth2/v2/auth")
             .tokenUri("https://www.googleapis.com/oauth2/v4/token")
