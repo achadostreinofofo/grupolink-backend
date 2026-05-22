@@ -14,8 +14,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient
+import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
-import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 
@@ -28,6 +29,9 @@ class SecurityConfig(
 ) {
     @Autowired(required = false)
     private var clientRegistrationRepository: ClientRegistrationRepository? = null
+
+    @Autowired(required = false)
+    private var googleOAuth2AccessTokenResponseClient: OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest>? = null
 
     private val googleOAuth2Enabled get() = googleClientId.isNotBlank()
 
@@ -73,7 +77,12 @@ class SecurityConfig(
 
         // Só ativa Google OAuth se o client-id estiver configurado
         if (googleOAuth2Enabled && clientRegistrationRepository != null) {
-            http.oauth2Login { oauth2 -> oauth2.successHandler(oauth2SuccessHandler) }
+            http.oauth2Login { oauth2 ->
+                oauth2.successHandler(oauth2SuccessHandler)
+                googleOAuth2AccessTokenResponseClient?.let { client ->
+                    oauth2.tokenEndpoint { it.accessTokenResponseClient(client) }
+                }
+            }
         }
 
         return http.build()
