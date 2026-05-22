@@ -16,7 +16,7 @@ import org.springframework.security.oauth2.core.oidc.IdTokenClaimNames
 class GoogleOAuth2Config(
     @Value("\${app.oauth2.google.client-id}") private val clientId: String,
     @Value("\${app.oauth2.google.client-secret}") private val clientSecret: String,
-    @Value("\${app.oauth2.google.redirect-uri:https://redirectgrupo.com.br/login/oauth2/code/google}")
+    @Value("\${app.oauth2.google.redirect-uri:https://redirectgrupo.com.br/api/oauth2/callback/google}")
     private val redirectUri: String
 ) {
 
