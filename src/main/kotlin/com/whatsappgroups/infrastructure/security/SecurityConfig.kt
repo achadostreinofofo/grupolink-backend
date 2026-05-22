@@ -55,6 +55,7 @@ class SecurityConfig(
                     .requestMatchers("/api/webhooks/**").permitAll()
                     .requestMatchers("/api/ml/oauth/callback").permitAll()
                     .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                    .requestMatchers("/api/oauth2/callback/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                     .anyRequest().authenticated()
@@ -84,6 +85,7 @@ class SecurityConfig(
 
             http.oauth2Login { oauth2 ->
                 oauth2.successHandler(oauth2SuccessHandler)
+                oauth2.redirectionEndpoint { it.baseUri("/api/oauth2/callback/*") }
                 oauth2.tokenEndpoint { it.accessTokenResponseClient(tokenResponseClient) }
             }
         }
