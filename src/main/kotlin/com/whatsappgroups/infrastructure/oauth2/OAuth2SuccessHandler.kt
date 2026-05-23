@@ -1,8 +1,10 @@
 package com.whatsappgroups.infrastructure.oauth2
 
 import com.whatsappgroups.domain.model.User
+import com.whatsappgroups.domain.model.UserStatus
 import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
+import java.time.LocalDateTime
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
@@ -38,14 +40,23 @@ class OAuth2SuccessHandler(
             return
         }
 
-        val user = userRepository.findByEmail(email)
-            ?: userRepository.save(
-                User(
-                    email        = email,
-                    passwordHash = "",   // sem senha: autenticação via OAuth2
-                    name         = name
-                )
+        val user = userRepository.findByEmail(email)?.also { existing ->
+            // Garante que contas Google existentes ficam ACTIVE
+            if (existing.status == UserStatus.PENDING_VERIFICATION) {
+                existing.status               = UserStatus.ACTIVE
+                existing.emailVerifiedAt      = LocalDateTime.now()
+                existing.emailVerificationToken = null
+                existing.updatedAt            = LocalDateTime.now()
+            }
+        } ?: userRepository.save(
+            User(
+                email            = email,
+                passwordHash     = "",
+                name             = name,
+                status           = UserStatus.ACTIVE,
+                emailVerifiedAt  = LocalDateTime.now()
             )
+        )
 
         val token = jwtTokenProvider.generateToken(user.id!!)
         log.info("Login OAuth2 bem-sucedido para ${user.email}")

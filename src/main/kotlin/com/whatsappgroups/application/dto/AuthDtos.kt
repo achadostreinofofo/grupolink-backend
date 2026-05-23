@@ -3,12 +3,12 @@ package com.whatsappgroups.application.dto
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 
-// password and cpf arrive RSA-OAEP encrypted — pattern/size constraints applied after decryption
 data class SignUpRequest(
     @field:Email @field:NotBlank val email: String,
     @field:NotBlank val password: String,
     @field:NotBlank val name: String,
-    val cpf: String? = null
+    val cpf: String? = null,
+    val phone: String? = null
 )
 
 data class LoginRequest(
@@ -22,4 +22,19 @@ data class AuthResponse(
     val email: String,
     val name: String,
     val plan: String
+)
+
+data class ForgotPasswordRequest(
+    @field:Email @field:NotBlank val email: String,
+    @field:NotBlank val cpf: String
+)
+
+data class ResetPasswordRequest(
+    @field:NotBlank val token: String,
+    @field:NotBlank val newPassword: String
+)
+
+data class SignUpPendingResponse(
+    val email: String,
+    val message: String = "Conta criada com sucesso. Verifique seu e-mail para ativar."
 )

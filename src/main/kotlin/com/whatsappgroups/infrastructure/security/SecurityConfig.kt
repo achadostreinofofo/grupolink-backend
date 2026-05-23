@@ -47,7 +47,8 @@ class SecurityConfig(
             }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/api/auth/**").permitAll()
+                    .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
+                    .requestMatchers("/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                     .requestMatchers("/api/security/public-key").permitAll()
                     .requestMatchers("/api/contact").permitAll()
                     .requestMatchers(HttpMethod.GET, "/r/**").permitAll()

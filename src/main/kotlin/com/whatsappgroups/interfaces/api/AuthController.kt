@@ -1,13 +1,9 @@
 package com.whatsappgroups.interfaces.api
 
-import com.whatsappgroups.application.dto.AuthResponse
-import com.whatsappgroups.application.dto.LoginRequest
-import com.whatsappgroups.application.dto.SignUpRequest
+import com.whatsappgroups.application.dto.*
 import com.whatsappgroups.application.usecase.auth.AuthUseCase
 import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.infrastructure.security.RsaKeyService
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -17,7 +13,7 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
 
-@Tag(name = "Autenticação", description = "Signup, login e perfil do usuário")
+@Tag(name = "Autenticação")
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
@@ -27,10 +23,10 @@ class AuthController(
 ) {
 
     @PostMapping("/signup")
-    fun signUp(@Valid @RequestBody request: SignUpRequest): ResponseEntity<AuthResponse> {
+    fun signUp(@Valid @RequestBody request: SignUpRequest): ResponseEntity<SignUpPendingResponse> {
         val decrypted = request.copy(
             password = rsaKeyService.decrypt(request.password),
-            cpf = request.cpf?.let { rsaKeyService.decrypt(it) }
+            cpf      = request.cpf?.let { rsaKeyService.decrypt(it) }
         )
         require(decrypted.password.length >= 8) { "Senha deve ter no mínimo 8 caracteres" }
         return ResponseEntity.status(HttpStatus.CREATED).body(authUseCase.signUp(decrypted))
@@ -42,6 +38,22 @@ class AuthController(
         return ResponseEntity.ok(authUseCase.login(decrypted))
     }
 
+    @GetMapping("/verify-email")
+    fun verifyEmail(@RequestParam token: String): ResponseEntity<AuthResponse> =
+        ResponseEntity.ok(authUseCase.verifyEmail(token))
+
+    @PostMapping("/forgot-password")
+    fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequest): ResponseEntity<Map<String, String>> {
+        authUseCase.forgotPassword(request)
+        return ResponseEntity.ok(mapOf("message" to "Se os dados conferem, você receberá um e-mail com instruções."))
+    }
+
+    @PostMapping("/reset-password")
+    fun resetPassword(@Valid @RequestBody request: ResetPasswordRequest): ResponseEntity<Map<String, String>> {
+        authUseCase.resetPassword(request)
+        return ResponseEntity.ok(mapOf("message" to "Senha alterada com sucesso."))
+    }
+
     @GetMapping("/me")
     fun me(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<Any> {
         val userId = UUID.fromString(userDetails.username)
@@ -49,13 +61,14 @@ class AuthController(
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
 
         return ResponseEntity.ok(mapOf(
-            "id" to user.id,
-            "email" to user.email,
-            "name" to user.name,
-            "cpf" to user.cpf,
-            "plan" to user.plan.name,
-            "whatsappIntegrated" to user.whatsappIntegrated,
-            "createdAt" to user.createdAt
+            "id"                  to user.id,
+            "email"               to user.email,
+            "name"                to user.name,
+            "cpf"                 to user.cpf,
+            "phone"               to user.phone,
+            "plan"                to user.plan.name,
+            "whatsappIntegrated"  to user.whatsappIntegrated,
+            "createdAt"           to user.createdAt
         ))
     }
 }
