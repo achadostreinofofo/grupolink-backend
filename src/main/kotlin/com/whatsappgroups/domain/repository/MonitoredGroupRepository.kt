@@ -13,11 +13,19 @@ interface MonitoredGroupRepository : JpaRepository<MonitoredGroup, UUID> {
     fun findByIdAndOwner(id: UUID, owner: User): Optional<MonitoredGroup>
 
     /**
-     * Lookup principal usado pelo webhook: dado um sessionId do WhatsApp Service
-     * e o JID do grupo, retorna a configuração ativa (se houver).
+     * Lookup legado: sessão exata + grupo. Mantido para compatibilidade.
      */
     fun findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(
         sessionId: String,
+        whatsappGroupId: String
+    ): Optional<MonitoredGroup>
+
+    /**
+     * Lookup resiliente: encontra monitoramento ativo pelo dono + JID do grupo,
+     * independente de qual sessão foi usada. Suporta troca de sessionId.
+     */
+    fun findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(
+        owner: User,
         whatsappGroupId: String
     ): Optional<MonitoredGroup>
 }
