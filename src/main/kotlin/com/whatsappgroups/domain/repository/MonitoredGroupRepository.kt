@@ -28,4 +28,12 @@ interface MonitoredGroupRepository : JpaRepository<MonitoredGroup, UUID> {
         owner: User,
         whatsappGroupId: String
     ): Optional<MonitoredGroup>
+
+    /**
+     * Fallback: busca monitoramento apenas pelo JID do grupo quando a sessão
+     * não está registrada no banco (ex: sessão criada diretamente no whatsapp-service).
+     */
+    fun findFirstByWhatsappGroupIdAndActiveTrue(
+        whatsappGroupId: String
+    ): Optional<MonitoredGroup>
 }

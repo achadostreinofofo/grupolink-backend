@@ -141,30 +141,35 @@ class MonitoredGroupUseCase(
      */
     @Transactional
     fun processIncomingMessage(payload: IncomingWhatsappMessageRequest) {
-        // Resolve o dono da sessão que recebeu a mensagem
+        // Tenta resolver a sessão pelo ID recebido no webhook
         val session = webSessionRepository.findBySessionId(payload.sessionId).orElse(null)
-            ?: run {
-                log.debug("Sessão desconhecida no webhook: sessionId=${payload.sessionId}")
-                return
-            }
 
-        // Busca o monitoramento pelo dono + grupo, independente do sessionId salvo
-        val monitored = monitoredGroupRepository
-            .findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(session.owner, payload.groupId)
-            .orElse(null) ?: run {
-                log.debug(
-                    "Mensagem de grupo não monitorado: owner=${session.owner.id} group=${payload.groupId}"
-                )
-                return
-            }
+        // Busca o monitored group: por owner (se sessão conhecida) ou por groupId (fallback)
+        val monitored: MonitoredGroup = if (session != null) {
+            monitoredGroupRepository
+                .findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(session.owner, payload.groupId)
+                .orElse(null)
+        } else {
+            // Sessão não está no banco (criada fora do fluxo normal) — busca só pelo groupId
+            log.warn("Sessão ${payload.sessionId} não encontrada no banco — usando fallback por groupId")
+            monitoredGroupRepository
+                .findFirstByWhatsappGroupIdAndActiveTrue(payload.groupId)
+                .orElse(null)
+        } ?: run {
+            log.debug("Mensagem de grupo não monitorado: group=${payload.groupId}")
+            return
+        }
 
-        // Auto-repara referência de sessão quando ela foi recriada
+        // Auto-repara referência de sessão quando ela foi recriada ou é nova
         if (monitored.webSession.sessionId != payload.sessionId) {
-            log.info(
-                "Sessão do monitored group atualizada: ${monitored.webSession.sessionId} → ${payload.sessionId} (group=${payload.groupId})"
-            )
-            monitored.webSession = session
-            monitored.updatedAt  = LocalDateTime.now()
+            val newSession = session ?: webSessionRepository.findBySessionId(payload.sessionId).orElse(null)
+            if (newSession != null) {
+                log.info(
+                    "Sessão do monitored group atualizada: ${monitored.webSession.sessionId} → ${payload.sessionId} (group=${payload.groupId})"
+                )
+                monitored.webSession = newSession
+                monitored.updatedAt  = LocalDateTime.now()
+            }
         }
 
         val mlAccount = mlAccountRepository.findByOwner(monitored.owner).orElse(null)
