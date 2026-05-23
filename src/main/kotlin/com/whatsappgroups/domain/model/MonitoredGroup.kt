@@ -17,7 +17,7 @@ class MonitoredGroup(
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "web_session_id", nullable = false)
-    val webSession: WhatsappWebSession,
+    var webSession: WhatsappWebSession,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "structure_id", nullable = false)

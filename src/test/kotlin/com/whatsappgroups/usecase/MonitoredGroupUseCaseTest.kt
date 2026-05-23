@@ -64,8 +64,9 @@ class MonitoredGroupUseCaseTest {
 
     @Test
     fun `create throws when session not authenticated`() {
-        whenever(userRepository.findById(userId)).thenReturn(Optional.of(user()))
-        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session(WebSessionStatus.WAITING_SCAN)))
+        val owner = user()
+        whenever(userRepository.findById(userId)).thenReturn(Optional.of(owner))
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session(owner, WebSessionStatus.WAITING_SCAN)))
 
         assertThatThrownBy { useCase.create(userId, CreateMonitoredGroupRequest(sessionId = sessionId, whatsappGroupId = "g@g.us", structureId = structureId.toString())) }
             .isInstanceOf(IllegalStateException::class.java)
@@ -104,8 +105,18 @@ class MonitoredGroupUseCaseTest {
     }
 
     @Test
+    fun `processIncomingMessage does nothing when session unknown`() {
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.empty())
+        useCase.processIncomingMessage(payload())
+        verify(monitoredGroupRepository, never()).findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(any(), any())
+    }
+
+    @Test
     fun `processIncomingMessage does nothing when group not monitored`() {
-        whenever(monitoredGroupRepository.findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(any(), any())).thenReturn(Optional.empty())
+        val owner = user()
+        val session = session(owner)
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us")).thenReturn(Optional.empty())
         useCase.processIncomingMessage(payload())
         verify(mlAccountRepository, never()).findByOwner(any())
     }
@@ -113,8 +124,10 @@ class MonitoredGroupUseCaseTest {
     @Test
     fun `processIncomingMessage discards when no ML account`() {
         val owner = user()
-        whenever(monitoredGroupRepository.findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(any(), any()))
-            .thenReturn(Optional.of(monitoredGroup(owner, session(), structure())))
+        val session = session(owner)
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us"))
+            .thenReturn(Optional.of(monitoredGroup(owner, session, structure())))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.empty())
 
         useCase.processIncomingMessage(payload())
@@ -124,9 +137,11 @@ class MonitoredGroupUseCaseTest {
     @Test
     fun `processIncomingMessage broadcasts text message`() {
         val owner = user()
+        val session = session(owner)
         val structure = structureWithGroups(1)
-        whenever(monitoredGroupRepository.findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(any(), any()))
-            .thenReturn(Optional.of(monitoredGroup(owner, session(), structure)))
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us"))
+            .thenReturn(Optional.of(monitoredGroup(owner, session, structure)))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
         whenever(mlAccountUseCase.resolveAndReplaceLinks(any(), any())).thenAnswer { inv -> inv.getArgument(0) }
         whenever(broadcastUseCase.broadcast(any(), any(), any())).thenReturn(mock())
@@ -139,9 +154,11 @@ class MonitoredGroupUseCaseTest {
     @Test
     fun `processIncomingMessage sends image directly per group`() {
         val owner = user()
+        val session = session(owner)
         val structure = structureWithGroups(2)
-        whenever(monitoredGroupRepository.findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(any(), any()))
-            .thenReturn(Optional.of(monitoredGroup(owner, session(), structure)))
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us"))
+            .thenReturn(Optional.of(monitoredGroup(owner, session, structure)))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
         whenever(mlAccountUseCase.resolveAndReplaceLinks(any(), any())).thenAnswer { inv -> inv.getArgument(0) }
 
@@ -154,9 +171,11 @@ class MonitoredGroupUseCaseTest {
     @Test
     fun `processIncomingMessage prepends messagePrefix`() {
         val owner = user()
+        val session = session(owner)
         val structure = structureWithGroups(1)
-        whenever(monitoredGroupRepository.findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(any(), any()))
-            .thenReturn(Optional.of(monitoredGroup(owner, session(), structure, prefix = "🔥")))
+        whenever(webSessionRepository.findBySessionId(sessionId)).thenReturn(Optional.of(session))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us"))
+            .thenReturn(Optional.of(monitoredGroup(owner, session, structure, prefix = "🔥")))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
         whenever(mlAccountUseCase.resolveAndReplaceLinks(any(), any())).thenReturn("https://x.com")
         whenever(broadcastUseCase.broadcast(any(), any(), any())).thenReturn(mock())
@@ -165,8 +184,30 @@ class MonitoredGroupUseCaseTest {
         verify(broadcastUseCase).broadcast(any(), any(), argThat<BroadcastMessageRequest> { content.startsWith("🔥") })
     }
 
+    @Test
+    fun `processIncomingMessage auto-repairs session reference when sessionId changed`() {
+        val owner = user()
+        val oldSession = session(owner)
+        val newSession = WhatsappWebSession(id = UUID.randomUUID(), owner = owner, sessionId = "new-session-xyz", status = WebSessionStatus.AUTHENTICATED)
+        val structure = structureWithGroups(1)
+        val mg = monitoredGroup(owner, oldSession, structure)
+
+        whenever(webSessionRepository.findBySessionId("new-session-xyz")).thenReturn(Optional.of(newSession))
+        whenever(monitoredGroupRepository.findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(owner, "monitored@g.us"))
+            .thenReturn(Optional.of(mg))
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
+        whenever(mlAccountUseCase.resolveAndReplaceLinks(any(), any())).thenAnswer { inv -> inv.getArgument(0) }
+        whenever(broadcastUseCase.broadcast(any(), any(), any())).thenReturn(mock())
+
+        useCase.processIncomingMessage(payload(sessionId = "new-session-xyz"))
+
+        assertThat(mg.webSession.sessionId).isEqualTo("new-session-xyz")
+        verify(broadcastUseCase).broadcast(any(), any(), any())
+    }
+
     private fun user() = User(id = userId, email = "u@t.com", passwordHash = "h", name = "U")
-    private fun session(status: WebSessionStatus = WebSessionStatus.AUTHENTICATED) = WhatsappWebSession(id = UUID.randomUUID(), owner = user(), sessionId = sessionId, status = status)
+    private fun session(owner: User = user(), status: WebSessionStatus = WebSessionStatus.AUTHENTICATED) =
+        WhatsappWebSession(id = UUID.randomUUID(), owner = owner, sessionId = sessionId, status = status)
     private fun structure() = Structure(id = structureId, owner = user(), name = "S", slug = "s")
     private fun structureWithGroups(count: Int): Structure {
         val s = structure()
@@ -176,6 +217,6 @@ class MonitoredGroupUseCaseTest {
     private fun monitoredGroup(owner: User, session: WhatsappWebSession, structure: Structure, prefix: String? = null) =
         MonitoredGroup(id = monitoredId, owner = owner, webSession = session, structure = structure, whatsappGroupId = "monitored@g.us", messagePrefix = prefix)
     private fun mlAccount(owner: User) = MercadoLivreAccount(id = UUID.randomUUID(), owner = owner, mlUserId = "ml-999", mlNickname = "Seller", accessToken = "token")
-    private fun payload(text: String = "https://meli.la/test", imageBase64: String? = null) =
+    private fun payload(text: String = "https://meli.la/test", imageBase64: String? = null, sessionId: String = this.sessionId) =
         IncomingWhatsappMessageRequest(sessionId = sessionId, groupId = "monitored@g.us", senderJid = "s@s.net", messageId = "m1", text = text, imageBase64 = imageBase64, imageMimeType = null, timestamp = 0)
 }

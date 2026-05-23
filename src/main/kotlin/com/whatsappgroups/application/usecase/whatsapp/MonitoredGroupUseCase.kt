@@ -141,16 +141,31 @@ class MonitoredGroupUseCase(
      */
     @Transactional
     fun processIncomingMessage(payload: IncomingWhatsappMessageRequest) {
+        // Resolve o dono da sessão que recebeu a mensagem
+        val session = webSessionRepository.findBySessionId(payload.sessionId).orElse(null)
+            ?: run {
+                log.debug("Sessão desconhecida no webhook: sessionId=${payload.sessionId}")
+                return
+            }
+
+        // Busca o monitoramento pelo dono + grupo, independente do sessionId salvo
         val monitored = monitoredGroupRepository
-            .findFirstByWebSession_SessionIdAndWhatsappGroupIdAndActiveTrue(
-                payload.sessionId, payload.groupId
-            )
+            .findFirstByOwnerAndWhatsappGroupIdAndActiveTrue(session.owner, payload.groupId)
             .orElse(null) ?: run {
                 log.debug(
-                    "Mensagem de grupo não monitorado: session=${payload.sessionId} group=${payload.groupId}"
+                    "Mensagem de grupo não monitorado: owner=${session.owner.id} group=${payload.groupId}"
                 )
                 return
             }
+
+        // Auto-repara referência de sessão quando ela foi recriada
+        if (monitored.webSession.sessionId != payload.sessionId) {
+            log.info(
+                "Sessão do monitored group atualizada: ${monitored.webSession.sessionId} → ${payload.sessionId} (group=${payload.groupId})"
+            )
+            monitored.webSession = session
+            monitored.updatedAt  = LocalDateTime.now()
+        }
 
         val mlAccount = mlAccountRepository.findByOwner(monitored.owner).orElse(null)
         if (mlAccount == null) {
@@ -161,7 +176,7 @@ class MonitoredGroupUseCase(
         val ownerId     = monitored.owner.id ?: return
         val structure   = monitored.structure
         val structureId = structure.id ?: return
-        val sessionId   = monitored.webSession.sessionId
+        val sessionId   = payload.sessionId   // usa a sessão ativa, não a salva no banco
 
         val textWithReplacedLinks = mlAccountUseCase.resolveAndReplaceLinks(payload.text, mlAccount)
 
