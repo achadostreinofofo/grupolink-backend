@@ -8,6 +8,7 @@ import java.util.UUID
 @Table(name = "ml_accounts", uniqueConstraints = [UniqueConstraint(columnNames = ["owner_id"])])
 class MercadoLivreAccount(
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     val id: UUID? = null,
 
     @ManyToOne(fetch = FetchType.LAZY)
