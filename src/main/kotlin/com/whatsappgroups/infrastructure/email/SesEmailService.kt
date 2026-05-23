@@ -23,12 +23,60 @@ class SesEmailService(
             .build()
     }
 
-    fun sendContactEmail(
-        toAddress: String,
-        senderName: String,
-        senderEmail: String,
-        messageBody: String
-    ) {
+    fun sendVerificationEmail(toAddress: String, name: String, activationLink: String) {
+        val subject = "Ative sua conta no GrupoLink"
+        val html = emailLayout(
+            preheader = "Bem-vindo ao GrupoLink! Clique para ativar sua conta.",
+            body = """
+                <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">
+                    Bem-vindo ao GrupoLink, ${escapeHtml(name)}!
+                </h1>
+                <p style="font-size:15px;color:#6b7280;margin:0 0 24px;line-height:1.6">
+                    Sua conta foi criada com sucesso. Para começar a usar a plataforma,
+                    confirme seu e-mail clicando no botão abaixo.
+                </p>
+                ${ctaButton(activationLink, "Ativar minha conta")}
+                <p style="font-size:13px;color:#9ca3af;margin:24px 0 0;line-height:1.6">
+                    Se você não criou esta conta, ignore este e-mail.<br>
+                    O link expira em <strong>24 horas</strong>.
+                </p>
+                <p style="font-size:12px;color:#d1d5db;margin:16px 0 0">
+                    Ou copie o link: <a href="$activationLink" style="color:#0d9488;word-break:break-all">$activationLink</a>
+                </p>
+            """.trimIndent()
+        )
+        send(toAddress, subject, html)
+    }
+
+    fun sendPasswordResetEmail(toAddress: String, name: String, resetLink: String) {
+        val subject = "Redefinição de senha — GrupoLink"
+        val html = emailLayout(
+            preheader = "Recebemos uma solicitação para redefinir sua senha.",
+            body = """
+                <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">
+                    Redefinição de senha
+                </h1>
+                <p style="font-size:15px;color:#6b7280;margin:0 0 8px;line-height:1.6">
+                    Olá, ${escapeHtml(name)}.
+                </p>
+                <p style="font-size:15px;color:#6b7280;margin:0 0 24px;line-height:1.6">
+                    Recebemos uma solicitação para redefinir a senha da sua conta.
+                    Clique no botão abaixo para criar uma nova senha.
+                </p>
+                ${ctaButton(resetLink, "Criar nova senha")}
+                <p style="font-size:13px;color:#9ca3af;margin:24px 0 0;line-height:1.6">
+                    Se você não solicitou a redefinição, ignore este e-mail — sua senha não será alterada.<br>
+                    O link expira em <strong>2 horas</strong>.
+                </p>
+                <p style="font-size:12px;color:#d1d5db;margin:16px 0 0">
+                    Ou copie o link: <a href="$resetLink" style="color:#0d9488;word-break:break-all">$resetLink</a>
+                </p>
+            """.trimIndent()
+        )
+        send(toAddress, subject, html)
+    }
+
+    fun sendContactEmail(toAddress: String, senderName: String, senderEmail: String, messageBody: String) {
         val subject = "Novo contato via site — $senderName"
         val html = """
             <html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px">
@@ -43,36 +91,90 @@ class SesEmailService(
               <p style="font-size:11px;color:#9ca3af;margin-top:24px">Enviado via formulário em redirectgrupo.com.br</p>
             </body></html>
         """.trimIndent()
-
         val text = "De: $senderName <$senderEmail>\n\n$messageBody"
-
         try {
-            ses.sendEmail(
-                SendEmailRequest.builder()
-                    .destination(Destination.builder().toAddresses(toAddress).build())
-                    .message(
-                        Message.builder()
-                            .subject(Content.builder().data(subject).charset("UTF-8").build())
-                            .body(
-                                Body.builder()
-                                    .html(Content.builder().data(html).charset("UTF-8").build())
-                                    .text(Content.builder().data(text).charset("UTF-8").build())
-                                    .build()
-                            )
-                            .build()
-                    )
-                    .source(fromAddress)
-                    .replyToAddresses(senderEmail)
-                    .build()
-            )
+            ses.sendEmail(buildRequest(toAddress, subject, html, text, senderEmail))
             log.info("Contact email sent from $senderEmail to $toAddress")
         } catch (e: Exception) {
-            log.error("Failed to send contact email from $senderEmail: ${e.message}")
+            log.error("Failed to send contact email: ${e.message}")
             throw e
         }
     }
 
+    // ── private helpers ──────────────────────────────────────────────────────
+
+    private fun send(toAddress: String, subject: String, html: String) {
+        try {
+            ses.sendEmail(buildRequest(toAddress, subject, html, stripHtml(html)))
+            log.info("Email '$subject' sent to $toAddress")
+        } catch (e: Exception) {
+            log.error("Failed to send email '$subject' to $toAddress: ${e.message}")
+            throw e
+        }
+    }
+
+    private fun buildRequest(
+        to: String, subject: String, html: String,
+        text: String = "", replyTo: String? = null
+    ) = SendEmailRequest.builder()
+        .destination(Destination.builder().toAddresses(to).build())
+        .message(
+            Message.builder()
+                .subject(Content.builder().data(subject).charset("UTF-8").build())
+                .body(Body.builder()
+                    .html(Content.builder().data(html).charset("UTF-8").build())
+                    .text(Content.builder().data(text).charset("UTF-8").build())
+                    .build())
+                .build()
+        )
+        .source(fromAddress)
+        .apply { if (replyTo != null) replyToAddresses(replyTo) }
+        .build()
+
+    private fun emailLayout(preheader: String, body: String) = """
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>GrupoLink</title></head>
+        <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+          <div style="display:none;max-height:0;overflow:hidden;color:#f3f4f6;font-size:1px">$preheader</div>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 16px">
+            <tr><td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px">
+                <!-- Header -->
+                <tr><td style="background:#0d9488;border-radius:12px 12px 0 0;padding:28px 40px;text-align:center">
+                  <span style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">
+                    G&nbsp;<span style="font-weight:400">GrupoLink</span>
+                  </span>
+                </td></tr>
+                <!-- Body -->
+                <tr><td style="background:#ffffff;padding:40px;border-radius:0 0 12px 12px">
+                  $body
+                  <hr style="margin:32px 0;border:none;border-top:1px solid #f3f4f6"/>
+                  <p style="font-size:12px;color:#9ca3af;margin:0;line-height:1.6;text-align:center">
+                    GrupoLink · <a href="https://www.redirectgrupo.com.br" style="color:#0d9488;text-decoration:none">redirectgrupo.com.br</a><br>
+                    Você está recebendo este e-mail porque se cadastrou na plataforma GrupoLink.
+                  </p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body></html>
+    """.trimIndent()
+
+    private fun ctaButton(link: String, text: String) = """
+        <table cellpadding="0" cellspacing="0" style="margin:0 0 8px">
+          <tr><td style="background:#0d9488;border-radius:8px;text-align:center">
+            <a href="$link" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;letter-spacing:0.2px">
+              $text
+            </a>
+          </td></tr>
+        </table>
+    """.trimIndent()
+
     private fun escapeHtml(s: String) = s
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         .replace("\"", "&quot;").replace("'", "&#39;")
+
+    private fun stripHtml(html: String) = html.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
 }
