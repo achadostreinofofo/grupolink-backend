@@ -5,9 +5,12 @@ import com.whatsappgroups.application.dto.SignUpRequest
 import com.whatsappgroups.application.usecase.auth.AuthUseCase
 import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import com.whatsappgroups.application.usecase.auth.EmailAlreadyExistsException
+import com.whatsappgroups.application.usecase.auth.EmailNotVerifiedException
 import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.User
+import com.whatsappgroups.domain.model.UserStatus
 import com.whatsappgroups.domain.repository.UserRepository
+import com.whatsappgroups.infrastructure.email.SesEmailService
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -25,6 +28,7 @@ import java.util.UUID
 class AuthUseCaseTest {
 
     @Mock private lateinit var userRepository: UserRepository
+    @Mock private lateinit var emailService: SesEmailService
     private lateinit var passwordEncoder: PasswordEncoder
     private lateinit var jwtTokenProvider: JwtTokenProvider
     private lateinit var useCase: AuthUseCase
@@ -38,11 +42,11 @@ class AuthUseCaseTest {
             secret = "test-secret-at-least-256-bits-long-for-hmac-sha256-algorithm-padding",
             expirationMs = 3600000L
         )
-        useCase = AuthUseCase(userRepository, passwordEncoder, jwtTokenProvider)
+        useCase = AuthUseCase(userRepository, passwordEncoder, jwtTokenProvider, emailService, "http://localhost:3000")
     }
 
     @Test
-    fun `signUp succeeds and returns auth response`() {
+    fun `signUp succeeds returns pending response and sends email`() {
         whenever(userRepository.existsByEmail("new@test.com")).thenReturn(false)
         whenever(userRepository.save(any<User>())).thenAnswer { invocation ->
             (invocation.getArgument(0) as User).also {
@@ -55,10 +59,9 @@ class AuthUseCaseTest {
         val result = useCase.signUp(SignUpRequest(email = "new@test.com", password = "pass1234", name = "John"))
 
         assertThat(result.email).isEqualTo("new@test.com")
-        assertThat(result.name).isEqualTo("John")
-        assertThat(result.token).isNotBlank()
-        assertThat(result.plan).isEqualTo(Plan.FREE.name)
+        assertThat(result.message).isNotBlank()
         verify(userRepository).save(any())
+        verify(emailService).sendVerificationEmail(eq("new@test.com"), eq("John"), any())
     }
 
     @Test
@@ -76,6 +79,23 @@ class AuthUseCaseTest {
         val captor = argumentCaptor<User>()
         verify(userRepository).save(captor.capture())
         assertThat(captor.firstValue.cpf).isEqualTo("123.456.789-09")
+        assertThat(captor.firstValue.status).isEqualTo(UserStatus.PENDING_VERIFICATION)
+    }
+
+    @Test
+    fun `signUp saves phone when provided`() {
+        whenever(userRepository.existsByEmail(any())).thenReturn(false)
+        whenever(userRepository.save(any<User>())).thenAnswer { inv ->
+            (inv.getArgument(0) as User).also {
+                val f = it.javaClass.getDeclaredField("id"); f.isAccessible = true; f.set(it, userId)
+            }
+        }
+
+        useCase.signUp(SignUpRequest(email = "x@x.com", password = "pass1234", name = "X", phone = "(11) 99999-9999"))
+
+        val captor = argumentCaptor<User>()
+        verify(userRepository).save(captor.capture())
+        assertThat(captor.firstValue.phone).isEqualTo("11999999999")
     }
 
     @Test
@@ -100,15 +120,26 @@ class AuthUseCaseTest {
     }
 
     @Test
-    fun `login succeeds with correct credentials`() {
+    fun `login succeeds with correct credentials for active user`() {
         val hash = passwordEncoder.encode("secret123")
-        val user = user(email = "u@test.com", passwordHash = hash)
+        val user = user(email = "u@test.com", passwordHash = hash, status = UserStatus.ACTIVE)
         whenever(userRepository.findByEmail("u@test.com")).thenReturn(user)
 
         val result = useCase.login(LoginRequest(email = "u@test.com", password = "secret123"))
 
         assertThat(result.email).isEqualTo("u@test.com")
         assertThat(result.token).isNotBlank()
+    }
+
+    @Test
+    fun `login throws EmailNotVerifiedException for pending user`() {
+        val hash = passwordEncoder.encode("secret123")
+        val user = user(email = "u@test.com", passwordHash = hash, status = UserStatus.PENDING_VERIFICATION)
+        whenever(userRepository.findByEmail("u@test.com")).thenReturn(user)
+
+        assertThatThrownBy {
+            useCase.login(LoginRequest(email = "u@test.com", password = "secret123"))
+        }.isInstanceOf(EmailNotVerifiedException::class.java)
     }
 
     @Test
@@ -134,6 +165,7 @@ class AuthUseCaseTest {
     private fun user(
         email: String = "test@test.com",
         passwordHash: String = "hash",
-        name: String = "Test"
-    ) = User(id = userId, email = email, passwordHash = passwordHash, name = name)
+        name: String = "Test",
+        status: UserStatus = UserStatus.ACTIVE
+    ) = User(id = userId, email = email, passwordHash = passwordHash, name = name, status = status)
 }

@@ -14,10 +14,6 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 import java.util.UUID
 
-class EmailAlreadyExistsException : IllegalArgumentException("E-mail já cadastrado")
-class CpfAlreadyExistsException   : IllegalArgumentException("CPF já cadastrado")
-class EmailNotVerifiedException   : IllegalStateException("EMAIL_NOT_VERIFIED")
-
 @Service
 class AuthUseCase(
     private val userRepository: UserRepository,
