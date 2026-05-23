@@ -3,10 +3,11 @@ package com.whatsappgroups.infrastructure.ml
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.bodyToMono
-import java.util.concurrent.TimeoutException
+import reactor.netty.http.client.HttpClient
 
 @Component
 class MercadoLivreApiClient(
@@ -16,26 +17,29 @@ class MercadoLivreApiClient(
     private val clientSecret: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
     private val webClient = WebClient.builder()
         .baseUrl("https://api.mercadolibre.com")
         .build()
 
+    // WebClient sem follow-redirect para capturar o Location header do meli.la
+    private val noRedirectClient = WebClient.builder()
+        .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
+        .build()
+
     fun resolveShortLink(meliUrl: String): String {
         return try {
-            val response = webClient.head()
+            // exchangeToMono acessa o response bruto sem lançar erro em 3xx
+            val resolved = noRedirectClient.head()
                 .uri(meliUrl)
-                .retrieve()
-                .toEntity(Void::class.java)
-                .block()
+                .exchangeToMono { response ->
+                    val location = response.headers().asHttpHeaders().location?.toString()
+                    response.releaseBody().thenReturn(location ?: meliUrl)
+                }
+                .block() ?: meliUrl
 
-            val location = response?.headers?.location?.toString()
-            if (location != null) {
-                log.info("Resolved meli.la link: $meliUrl → $location")
-                location
-            } else {
-                log.warn("No redirect location found for $meliUrl")
-                meliUrl
-            }
+            log.info("Resolved meli.la link: $meliUrl → $resolved")
+            resolved
         } catch (e: Exception) {
             log.error("Error resolving short link $meliUrl: ${e.message}", e)
             throw e

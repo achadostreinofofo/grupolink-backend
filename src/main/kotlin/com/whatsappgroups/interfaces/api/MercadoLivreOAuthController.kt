@@ -4,7 +4,7 @@ import com.whatsappgroups.application.dto.MlOAuthStartResponse
 import com.whatsappgroups.application.dto.MlStatusResponse
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
-import org.springframework.http.HttpStatus
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.view.RedirectView
@@ -14,7 +14,8 @@ import java.util.UUID
 @RequestMapping("/api/ml")
 class MercadoLivreOAuthController(
     private val mlAccountUseCase: MercadoLivreAccountUseCase,
-    private val jwtTokenProvider: JwtTokenProvider
+    private val jwtTokenProvider: JwtTokenProvider,
+    @Value("\${app.frontend-url:https://www.redirectgrupo.com.br}") private val frontendUrl: String
 ) {
     @GetMapping("/status")
     fun getStatus(@RequestHeader("Authorization") token: String): ResponseEntity<MlStatusResponse> {
@@ -42,9 +43,9 @@ class MercadoLivreOAuthController(
 
         return try {
             mlAccountUseCase.handleCallback(code, state)
-            RedirectView("/dashboard/settings/integrations?ml=success")
+            RedirectView("$frontendUrl/dashboard/settings/integrations?ml=success")
         } catch (e: Exception) {
-            RedirectView("/dashboard/settings/integrations?ml=error&error_desc=${e.message}")
+            RedirectView("$frontendUrl/dashboard/settings/integrations?ml=error&error_desc=${e.message}")
         }
     }
 
