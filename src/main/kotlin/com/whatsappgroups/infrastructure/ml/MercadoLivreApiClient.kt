@@ -1,8 +1,10 @@
 package com.whatsappgroups.infrastructure.ml
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.whatsappgroups.application.dto.MlItemDetails
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.HttpStatus
 import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
@@ -31,6 +33,39 @@ class MercadoLivreApiClient(
     private val pageClient = WebClient.builder()
         .codecs { it.defaultCodecs().maxInMemorySize(2 * 1024 * 1024) }
         .build()
+
+    fun validateToken(accessToken: String): Boolean {
+        return try {
+            val valid = webClient.get()
+                .uri("/users/me")
+                .header("Authorization", "Bearer $accessToken")
+                .exchangeToMono { response ->
+                    response.releaseBody().thenReturn(response.statusCode() == HttpStatus.OK)
+                }
+                .block() ?: false
+            log.debug("Token validation result: $valid")
+            valid
+        } catch (e: Exception) {
+            log.warn("Token validation failed: ${e.message}")
+            false
+        }
+    }
+
+    // Items API is public — no auth required for published items
+    fun getItem(itemId: String): MlItemDetails? {
+        return try {
+            val item = webClient.get()
+                .uri("/items/{itemId}", itemId)
+                .retrieve()
+                .bodyToMono<MlItemDetails>()
+                .block()
+            log.info("Fetched item $itemId: ${item?.title}")
+            item
+        } catch (e: Exception) {
+            log.error("Error fetching item $itemId: ${e.message}", e)
+            null
+        }
+    }
 
     fun resolveShortLink(meliUrl: String): String {
         var current = meliUrl
