@@ -1,8 +1,10 @@
 package com.whatsappgroups.interfaces.api
 
+import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.dto.MlOAuthStartResponse
 import com.whatsappgroups.application.dto.MlStatusResponse
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
+import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
@@ -14,14 +16,27 @@ import java.util.UUID
 @RequestMapping("/api/ml")
 class MercadoLivreOAuthController(
     private val mlAccountUseCase: MercadoLivreAccountUseCase,
+    private val mlApiClient: MercadoLivreApiClient,
     private val jwtTokenProvider: JwtTokenProvider,
     @Value("\${app.frontend-url:https://www.redirectgrupo.com.br}") private val frontendUrl: String
 ) {
     @GetMapping("/status")
     fun getStatus(@RequestHeader("Authorization") token: String): ResponseEntity<MlStatusResponse> {
         val userId = jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))!!
-        val (connected, nickname) = mlAccountUseCase.getStatus(userId)
-        return ResponseEntity.ok(MlStatusResponse(connected, nickname))
+        val status = mlAccountUseCase.getStatus(userId)
+        return ResponseEntity.ok(status)
+    }
+
+    @GetMapping("/items/{itemId}")
+    fun getItem(
+        @PathVariable itemId: String,
+        @RequestHeader("Authorization") token: String
+    ): ResponseEntity<MlItemDetails> {
+        jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))
+            ?: return ResponseEntity.status(401).build()
+        val item = mlApiClient.getItem(itemId)
+            ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(item)
     }
 
     @GetMapping("/oauth/start")
