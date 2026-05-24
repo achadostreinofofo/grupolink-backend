@@ -28,7 +28,7 @@ class MercadoLivreAccountUseCase(
     private val mlRedirectUri: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val meliLinkPattern = Regex("https?://meli\\.la/\\S+")
+    private val meliLinkPattern = Regex("https?://meli\.la/\S+")
 
     fun getOAuthUrl(userId: UUID): String {
         val state = UUID.randomUUID().toString()
@@ -142,7 +142,7 @@ class MercadoLivreAccountUseCase(
 
         return try {
             val resolvedUrl = mlApiClient.resolveShortLink(meliUrl)
-            val itemId = extractItemId(resolvedUrl)
+            val itemId = extractItemId(resolvedUrl) ?: mlApiClient.extractItemIdFromPage(resolvedUrl)
             if (itemId != null) {
                 redisTemplate.opsForValue().set(cacheKey, itemId, 7, TimeUnit.DAYS)
             }
@@ -173,7 +173,7 @@ class MercadoLivreAccountUseCase(
     }
 
     private fun extractItemId(url: String): String? {
-        val pattern = Regex("(MLB|MLA|MLM|MLC|MCO|MPE|MLU|MLV)[-]?(\\d+)")
+        val pattern = Regex("(MLB|MLA|MLM|MLC|MCO|MPE|MLU|MLV)[-]?(\d+)")
         val match = pattern.find(url)
         return if (match != null) {
             match.groupValues[1] + match.groupValues[2]
