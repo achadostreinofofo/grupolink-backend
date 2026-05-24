@@ -25,10 +25,11 @@ class WhatsappWebController(
 
     @PostMapping("/sessions")
     fun startSession(
-        @AuthenticationPrincipal user: UserDetails
+        @AuthenticationPrincipal user: UserDetails,
+        @RequestParam(required = false, defaultValue = "false") force: Boolean
     ): ResponseEntity<StartSessionResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
-            .body(useCase.startSession(UUID.fromString(user.username)))
+            .body(useCase.startSession(UUID.fromString(user.username), force))
 
     @GetMapping("/sessions/{sessionId}")
     fun getStatus(

@@ -19,9 +19,24 @@ class WhatsappWebUseCase(
 ) {
 
     @Transactional
-    fun startSession(userId: UUID): StartSessionResponse {
+    fun startSession(userId: UUID, force: Boolean = false): StartSessionResponse {
         val owner = userRepository.findById(userId)
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        // Reaproveita sessão já autenticada quando o cliente não pediu criação explícita.
+        // Evita criar sessão órfã e disparar polling de QR quando o usuário só está
+        // revisitando a tela de conexão.
+        if (!force) {
+            val existing = sessionRepository
+                .findFirstByOwnerAndStatus(owner, WebSessionStatus.AUTHENTICATED)
+                .orElse(null)
+            if (existing != null) {
+                return StartSessionResponse(
+                    sessionId = existing.sessionId,
+                    status    = existing.status.name
+                )
+            }
+        }
 
         // Remove sessões antigas WAITING_SCAN antes de criar nova
         sessionRepository.findAllByOwner(owner)
@@ -31,7 +46,7 @@ class WhatsappWebUseCase(
                 sessionRepository.delete(stale)
             }
 
-        // Sempre cria uma nova sessão (permite múltiplos números conectados)
+        // Cria uma nova sessão (caminho usado quando force=true ou não há sessão autenticada)
         val sessionId = UUID.randomUUID().toString()
         val session = sessionRepository.save(
             WhatsappWebSession(owner = owner, sessionId = sessionId)
