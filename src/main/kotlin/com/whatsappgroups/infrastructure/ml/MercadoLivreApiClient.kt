@@ -29,8 +29,8 @@ class MercadoLivreApiClient(
 
     fun resolveShortLink(meliUrl: String): String {
         return try {
-            // exchangeToMono acessa o response bruto sem lançar erro em 3xx
-            val resolved = noRedirectClient.head()
+            // meli.la retorna redirect somente em GET, não em HEAD
+            val resolved = noRedirectClient.get()
                 .uri(meliUrl)
                 .exchangeToMono { response ->
                     val location = response.headers().asHttpHeaders().location?.toString()
