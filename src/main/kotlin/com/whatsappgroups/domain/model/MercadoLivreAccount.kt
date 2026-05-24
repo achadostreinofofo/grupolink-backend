@@ -30,6 +30,12 @@ class MercadoLivreAccount(
     @Column(name = "token_expires_at")
     var tokenExpiresAt: LocalDateTime? = null,
 
+    @Column(name = "matt_word", length = 128)
+    var mattWord: String? = null,
+
+    @Column(name = "matt_tool", length = 64)
+    var mattTool: String? = null,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
