@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.bodyToMono
 import reactor.netty.http.client.HttpClient
+import java.net.URI
 
 @Component
 class MercadoLivreApiClient(
@@ -22,28 +23,36 @@ class MercadoLivreApiClient(
         .baseUrl("https://api.mercadolibre.com")
         .build()
 
-    // WebClient sem follow-redirect para capturar o Location header do meli.la
+    // WebClient sem follow-redirect para seguir a cadeia manualmente
     private val noRedirectClient = WebClient.builder()
         .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
         .build()
 
     fun resolveShortLink(meliUrl: String): String {
-        return try {
-            // meli.la retorna redirect somente em GET, não em HEAD
-            val resolved = noRedirectClient.get()
-                .uri(meliUrl)
-                .exchangeToMono { response ->
-                    val location = response.headers().asHttpHeaders().location?.toString()
-                    response.releaseBody().thenReturn(location ?: meliUrl)
-                }
-                .block() ?: meliUrl
+        var current = meliUrl
+        for (hop in 1..5) {
+            val location = try {
+                noRedirectClient.get()
+                    .uri(current)
+                    .exchangeToMono { response ->
+                        val loc = response.headers().asHttpHeaders().location?.toString()
+                        response.releaseBody().thenReturn(loc ?: "")
+                    }
+                    .block()
+            } catch (e: Exception) {
+                log.error("Error following redirect from $current: ${e.message}", e)
+                break
+            }
 
-            log.info("Resolved meli.la link: $meliUrl → $resolved")
-            resolved
-        } catch (e: Exception) {
-            log.error("Error resolving short link $meliUrl: ${e.message}", e)
-            throw e
+            if (location.isNullOrBlank()) break
+
+            // resolve relative redirects
+            current = if (location.startsWith("http")) location
+                      else URI(current).resolve(location).toString()
         }
+
+        log.info("Resolved meli.la link: $meliUrl → $current")
+        return current
     }
 
     fun generateAffiliateLink(accessToken: String, itemId: String): String {
