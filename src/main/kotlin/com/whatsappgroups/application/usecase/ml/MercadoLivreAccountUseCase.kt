@@ -1,5 +1,6 @@
 package com.whatsappgroups.application.usecase.ml
 
+import com.whatsappgroups.application.dto.MlStatusResponse
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.repository.MercadoLivreAccountRepository
 import com.whatsappgroups.domain.repository.UserRepository
@@ -83,18 +84,72 @@ class MercadoLivreAccountUseCase(
             )
         }
 
+        // Invalidate validation cache so next status call re-validates
+        redisTemplate.delete("ml:tokenvalid:$userId")
+
         log.info("ML account connected for user $userId: ${userInfo.nickname}")
         return mlAccountRepository.save(account)
     }
 
-    fun getStatus(userId: UUID): Pair<Boolean, String?> {
+    // Returns detailed integration status, including live token validation with auto-refresh.
+    // Result is cached in Redis for 5 minutes to avoid hitting ML API on every request.
+    @Transactional
+    fun getStatus(userId: UUID): MlStatusResponse {
         val user = userRepository.getReferenceById(userId)
         val account = mlAccountRepository.findByOwner(user).orElse(null)
-        return if (account != null) {
-            Pair(true, account.mlNickname)
-        } else {
-            Pair(false, null)
+            ?: return MlStatusResponse(connected = false, nickname = null)
+
+        val cacheKey = "ml:tokenvalid:$userId"
+        val cached = redisTemplate.opsForValue().get(cacheKey)
+        if (cached == "valid") {
+            return MlStatusResponse(connected = true, nickname = account.mlNickname, tokenValid = true)
         }
+
+        // Validate token live against ML API
+        if (mlApiClient.validateToken(account.accessToken)) {
+            redisTemplate.opsForValue().set(cacheKey, "valid", 5, TimeUnit.MINUTES)
+            return MlStatusResponse(connected = true, nickname = account.mlNickname, tokenValid = true)
+        }
+
+        // Token invalid — attempt refresh
+        val refreshToken = account.refreshToken
+        if (refreshToken == null) {
+            return MlStatusResponse(
+                connected = true,
+                nickname = account.mlNickname,
+                tokenValid = false,
+                tokenExpired = true,
+                error = "Token expirado. Reconecte a integração com o Mercado Livre."
+            )
+        }
+
+        return try {
+            val tokenResponse = mlApiClient.refreshToken(refreshToken)
+            account.accessToken = tokenResponse.accessToken
+            if (tokenResponse.refreshToken != null) account.refreshToken = tokenResponse.refreshToken
+            account.tokenExpiresAt = if (tokenResponse.expiresIn != null)
+                LocalDateTime.now().plusSeconds(tokenResponse.expiresIn) else null
+            account.updatedAt = LocalDateTime.now()
+            mlAccountRepository.save(account)
+            redisTemplate.opsForValue().set(cacheKey, "valid", 5, TimeUnit.MINUTES)
+            log.info("Access token refreshed successfully for user $userId")
+            MlStatusResponse(connected = true, nickname = account.mlNickname, tokenValid = true)
+        } catch (e: Exception) {
+            log.warn("Token refresh failed for user $userId: ${e.message}")
+            MlStatusResponse(
+                connected = true,
+                nickname = account.mlNickname,
+                tokenValid = false,
+                tokenExpired = true,
+                error = "Token expirado e não foi possível renovar. Reconecte a integração."
+            )
+        }
+    }
+
+    fun getStatusLegacy(userId: UUID): Pair<Boolean, String?> {
+        val user = userRepository.getReferenceById(userId)
+        val account = mlAccountRepository.findByOwner(user).orElse(null)
+        return if (account != null) Pair(true, account.mlNickname) else Pair(false, null)
     }
 
     @Transactional
@@ -103,6 +158,7 @@ class MercadoLivreAccountUseCase(
         val account = mlAccountRepository.findByOwner(user).orElse(null)
         if (account != null) {
             mlAccountRepository.delete(account)
+            redisTemplate.delete("ml:tokenvalid:$userId")
             log.info("ML account disconnected for user $userId")
         }
     }
@@ -142,8 +198,15 @@ class MercadoLivreAccountUseCase(
 
         return try {
             val resolvedUrl = mlApiClient.resolveShortLink(meliUrl)
+            // Try extracting from URL first, then fall back to page body scraping
             val itemId = extractItemId(resolvedUrl) ?: mlApiClient.extractItemIdFromPage(resolvedUrl)
             if (itemId != null) {
+                // Validate item exists via Items API before caching
+                val item = mlApiClient.getItem(itemId)
+                if (item == null) {
+                    log.warn("Item $itemId not found in ML catalog, skipping")
+                    return null
+                }
                 redisTemplate.opsForValue().set(cacheKey, itemId, 7, TimeUnit.DAYS)
             }
             itemId
