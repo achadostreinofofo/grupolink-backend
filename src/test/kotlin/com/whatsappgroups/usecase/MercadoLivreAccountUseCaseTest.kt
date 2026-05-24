@@ -43,8 +43,11 @@ class MercadoLivreAccountUseCaseTest {
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
         useCase = MercadoLivreAccountUseCase(
             mlAccountRepository, userRepository, mlApiClient, redisTemplate,
-            mlClientId = "test-client-id", mlRedirectUri = "http://localhost:8080/api/ml/oauth/callback")
+            mlClientId = "test-client-id", mlRedirectUri = "http://localhost:8080/api/ml/oauth/callback"
+        )
     }
+
+    // ── OAuth ──────────────────────────────────────────────────────────────────
 
     @Test
     fun `getOAuthUrl stores state and returns ML authorization URL`() {
@@ -60,7 +63,8 @@ class MercadoLivreAccountUseCaseTest {
     @Test
     fun `handleCallback throws on invalid state`() {
         whenever(valueOps.get("ml:state:bad")).thenReturn(null)
-        assertThatThrownBy { useCase.handleCallback("code", "bad") }.isInstanceOf(IllegalStateException::class.java)
+        assertThatThrownBy { useCase.handleCallback("code", "bad") }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 
     @Test
@@ -70,7 +74,8 @@ class MercadoLivreAccountUseCaseTest {
         val saved = mlAccount(owner, "access-token-123")
         whenever(valueOps.get("ml:state:$state")).thenReturn(userId.toString())
         whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
-        whenever(mlApiClient.exchangeCodeForToken(any(), any())).thenReturn(MlTokenResponse(accessToken = "access-token-123", refreshToken = "refresh", expiresIn = 21600L))
+        whenever(mlApiClient.exchangeCodeForToken(any(), any()))
+            .thenReturn(MlTokenResponse(accessToken = "access-token-123", refreshToken = "refresh", expiresIn = 21600L))
         whenever(mlApiClient.getMe("access-token-123")).thenReturn(MlUserInfo(id = "ml-999", nickname = "TestSeller"))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.empty())
         whenever(mlAccountRepository.save(any()) as MercadoLivreAccount?).thenReturn(saved)
@@ -88,7 +93,8 @@ class MercadoLivreAccountUseCaseTest {
         val existing = mlAccount(owner, "old-token")
         whenever(valueOps.get("ml:state:$state")).thenReturn(userId.toString())
         whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
-        whenever(mlApiClient.exchangeCodeForToken(any(), any())).thenReturn(MlTokenResponse(accessToken = "new-token"))
+        whenever(mlApiClient.exchangeCodeForToken(any(), any()))
+            .thenReturn(MlTokenResponse(accessToken = "new-token"))
         whenever(mlApiClient.getMe("new-token")).thenReturn(MlUserInfo(id = "ml-999", nickname = "TestSeller"))
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(existing))
         whenever(mlAccountRepository.save(any()) as MercadoLivreAccount?).thenReturn(existing)
@@ -97,16 +103,7 @@ class MercadoLivreAccountUseCaseTest {
         assertThat(account.accessToken).isEqualTo("new-token")
     }
 
-    @Test
-    fun `getStatus returns connected true when account exists`() {
-        val owner = user()
-        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
-        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
-
-        val (connected, nickname) = useCase.getStatus(userId)
-        assertThat(connected).isTrue()
-        assertThat(nickname).isEqualTo("TestSeller")
-    }
+    // ── Status ─────────────────────────────────────────────────────────────────
 
     @Test
     fun `getStatus returns connected false when no account`() {
@@ -114,11 +111,102 @@ class MercadoLivreAccountUseCaseTest {
         whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
         whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.empty())
 
-        assertThat(useCase.getStatus(userId).first).isFalse()
+        val status = useCase.getStatus(userId)
+        assertThat(status.connected).isFalse()
     }
 
     @Test
-    fun `disconnect removes account`() {
+    fun `getStatus returns tokenValid true on cache hit`() {
+        val owner = user()
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
+        whenever(valueOps.get("ml:tokenvalid:$userId")).thenReturn("valid")
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.connected).isTrue()
+        assertThat(status.tokenValid).isTrue()
+        assertThat(status.nickname).isEqualTo("TestSeller")
+        verify(mlApiClient, never()).validateToken(any())
+    }
+
+    @Test
+    fun `getStatus validates token live on cache miss`() {
+        val owner = user()
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(mlAccount(owner)))
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.validateToken("test-access-token")).thenReturn(true)
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.connected).isTrue()
+        assertThat(status.tokenValid).isTrue()
+        verify(mlApiClient).validateToken("test-access-token")
+    }
+
+    @Test
+    fun `getStatus returns tokenExpired true when token invalid and no refresh token`() {
+        val owner = user()
+        val account = mlAccount(owner, refreshToken = null)
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(account))
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.validateToken(any())).thenReturn(false)
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.connected).isTrue()
+        assertThat(status.tokenValid).isFalse()
+        assertThat(status.tokenExpired).isTrue()
+        assertThat(status.error).isNotBlank()
+    }
+
+    @Test
+    fun `getStatus auto-refreshes token when expired`() {
+        val owner = user()
+        val account = mlAccount(owner, refreshToken = "refresh-tok")
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(account))
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.validateToken(any())).thenReturn(false)
+        whenever(mlApiClient.refreshToken("refresh-tok"))
+            .thenReturn(MlTokenResponse(accessToken = "refreshed-token"))
+        whenever(mlAccountRepository.save(any()) as MercadoLivreAccount?).thenReturn(account)
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.tokenValid).isTrue()
+        verify(mlApiClient).refreshToken("refresh-tok")
+    }
+
+    @Test
+    fun `getStatus returns tokenExpired when refresh fails`() {
+        val owner = user()
+        val account = mlAccount(owner, refreshToken = "bad-refresh")
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(account))
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.validateToken(any())).thenReturn(false)
+        whenever(mlApiClient.refreshToken(any())).thenThrow(RuntimeException("Refresh failed"))
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.tokenValid).isFalse()
+        assertThat(status.tokenExpired).isTrue()
+    }
+
+    @Test
+    fun `getStatus reports affiliateConfigured when mattWord and mattTool are set`() {
+        val owner = user()
+        val account = mlAccount(owner, mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
+        whenever(mlAccountRepository.findByOwner(owner)).thenReturn(Optional.of(account))
+        whenever(valueOps.get("ml:tokenvalid:$userId")).thenReturn("valid")
+
+        val status = useCase.getStatus(userId)
+        assertThat(status.affiliateConfigured).isTrue()
+    }
+
+    // ── Disconnect ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `disconnect removes account and clears token cache`() {
         val owner = user()
         val account = mlAccount(owner)
         whenever(userRepository.getReferenceById(userId)).thenReturn(owner)
@@ -126,6 +214,7 @@ class MercadoLivreAccountUseCaseTest {
 
         useCase.disconnect(userId)
         verify(mlAccountRepository).delete(account)
+        verify(redisTemplate).delete("ml:tokenvalid:$userId")
     }
 
     @Test
@@ -138,57 +227,94 @@ class MercadoLivreAccountUseCaseTest {
         verify(mlAccountRepository, never()).delete(any())
     }
 
+    // ── resolveAndReplaceLinks ─────────────────────────────────────────────────
+
     @Test
-    fun `resolveAndReplaceLinks returns unchanged text without meli links`() {
+    fun `resolveAndReplaceLinks returns unchanged text when no meli links`() {
         val result = useCase.resolveAndReplaceLinks("No links here", mlAccount(user()))
         assertThat(result).isEqualTo("No links here")
         verify(mlApiClient, never()).resolveShortLink(any())
     }
 
     @Test
-    fun `resolveAndReplaceLinks resolves and replaces on cache miss`() {
-        val account = mlAccount(user())
-        whenever(valueOps.get(any())).thenReturn(null)
-        whenever(mlApiClient.resolveShortLink("https://meli.la/abc123")).thenReturn("https://produto.mercadolivre.com.br/MLB-9876543-titulo")
-        whenever(mlApiClient.generateAffiliateLink("test-access-token", "MLB9876543")).thenReturn("https://affiliate.com/MLB9876543")
+    fun `resolveAndReplaceLinks skips substitution when affiliate params not configured`() {
+        val account = mlAccount(user())  // mattWord/mattTool null
 
         val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/abc123", account)
-        assertThat(result).contains("https://affiliate.com/MLB9876543")
-    }
-
-    @Test
-    fun `resolveAndReplaceLinks uses cached item ID`() {
-        val account = mlAccount(user())
-        val keyCaptor = argumentCaptor<String>()
-        whenever(valueOps.get(keyCaptor.capture())).thenReturn("MLB1111111").thenReturn(null)
-        whenever(mlApiClient.generateAffiliateLink("test-access-token", "MLB1111111")).thenReturn("https://affiliate.com")
-
-        val result = useCase.resolveAndReplaceLinks("https://meli.la/xyz", account)
-        assertThat(result).contains("https://affiliate.com")
+        assertThat(result).isEqualTo("Veja: https://meli.la/abc123")
         verify(mlApiClient, never()).resolveShortLink(any())
     }
 
     @Test
-    fun `resolveAndReplaceLinks uses fully cached affiliate link`() {
-        val account = mlAccount(user())
-        whenever(valueOps.get(any())).thenReturn("MLB2222222").thenReturn("https://cached-affiliate.com")
+    fun `resolveAndReplaceLinks replaces affiliate params on resolved URL`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.resolveShortLink("https://meli.la/abc123"))
+            .thenReturn("https://www.mercadolivre.com.br/social/promo?matt_word=liviacorrida&matt_tool=63390150&forceInApp=true")
 
-        val result = useCase.resolveAndReplaceLinks("https://meli.la/cached", account)
-        assertThat(result).contains("https://cached-affiliate.com")
-        verify(mlApiClient, never()).generateAffiliateLink(any(), any())
+        val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/abc123", account)
+
+        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        assertThat(result).contains("matt_tool=57009805")
+        assertThat(result).doesNotContain("matt_word=liviacorrida")
+        assertThat(result).doesNotContain("matt_tool=63390150")
+        assertThat(result).contains("forceInApp=true")
     }
 
     @Test
-    fun `resolveAndReplaceLinks returns original link when generation fails`() {
-        val account = mlAccount(user())
-        whenever(valueOps.get(any())).thenReturn(null)
-        whenever(mlApiClient.resolveShortLink(any())).thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo")
-        whenever(mlApiClient.generateAffiliateLink(any(), any())).thenThrow(RuntimeException("API error"))
+    fun `resolveAndReplaceLinks uses cached resolved URL without calling resolveShortLink`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any()))
+            .thenReturn("https://www.mercadolivre.com.br/produto?matt_word=other&matt_tool=99999")
 
-        assertThat(useCase.resolveAndReplaceLinks("https://meli.la/fail", account)).isEqualTo("https://meli.la/fail")
+        val result = useCase.resolveAndReplaceLinks("https://meli.la/xyz", account)
+
+        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        verify(mlApiClient, never()).resolveShortLink(any())
     }
 
+    @Test
+    fun `resolveAndReplaceLinks adds affiliate params to URL without existing params`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.resolveShortLink("https://meli.la/prod"))
+            .thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo")
+
+        val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
+
+        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        assertThat(result).contains("matt_tool=57009805")
+        assertThat(result).contains("MLB-1234567")
+    }
+
+    @Test
+    fun `resolveAndReplaceLinks returns original link when resolution fails`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.resolveShortLink(any())).thenThrow(RuntimeException("Network error"))
+
+        val result = useCase.resolveAndReplaceLinks("https://meli.la/fail", account)
+        assertThat(result).isEqualTo("https://meli.la/fail")
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
     private fun user() = User(id = userId, email = "u@t.com", passwordHash = "h", name = "U")
-    private fun mlAccount(owner: User, accessToken: String = "test-access-token") =
-        MercadoLivreAccount(id = UUID.randomUUID(), owner = owner, mlUserId = "ml-999", mlNickname = "TestSeller", accessToken = accessToken)
+
+    private fun mlAccount(
+        owner: User,
+        accessToken: String = "test-access-token",
+        refreshToken: String? = "test-refresh-token",
+        mattWord: String? = null,
+        mattTool: String? = null
+    ) = MercadoLivreAccount(
+        id = UUID.randomUUID(),
+        owner = owner,
+        mlUserId = "ml-999",
+        mlNickname = "TestSeller",
+        accessToken = accessToken,
+        refreshToken = refreshToken,
+        mattWord = mattWord,
+        mattTool = mattTool
+    )
 }

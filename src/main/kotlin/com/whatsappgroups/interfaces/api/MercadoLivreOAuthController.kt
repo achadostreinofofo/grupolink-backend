@@ -1,34 +1,57 @@
 package com.whatsappgroups.interfaces.api
 
+import com.whatsappgroups.application.dto.MlAffiliateParamsRequest
+import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.dto.MlOAuthStartResponse
 import com.whatsappgroups.application.dto.MlStatusResponse
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
+import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.view.RedirectView
-import java.util.UUID
 
 @RestController
 @RequestMapping("/api/ml")
 class MercadoLivreOAuthController(
     private val mlAccountUseCase: MercadoLivreAccountUseCase,
+    private val mlApiClient: MercadoLivreApiClient,
     private val jwtTokenProvider: JwtTokenProvider,
     @Value("\${app.frontend-url:https://www.redirectgrupo.com.br}") private val frontendUrl: String
 ) {
     @GetMapping("/status")
     fun getStatus(@RequestHeader("Authorization") token: String): ResponseEntity<MlStatusResponse> {
         val userId = jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))!!
-        val (connected, nickname) = mlAccountUseCase.getStatus(userId)
-        return ResponseEntity.ok(MlStatusResponse(connected, nickname))
+        return ResponseEntity.ok(mlAccountUseCase.getStatus(userId))
+    }
+
+    @PutMapping("/affiliate-params")
+    fun saveAffiliateParams(
+        @RequestHeader("Authorization") token: String,
+        @RequestBody request: MlAffiliateParamsRequest
+    ): ResponseEntity<Void> {
+        val userId = jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))!!
+        mlAccountUseCase.saveAffiliateParams(userId, request)
+        return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/items/{itemId}")
+    fun getItem(
+        @PathVariable itemId: String,
+        @RequestHeader("Authorization") token: String
+    ): ResponseEntity<MlItemDetails> {
+        jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))
+            ?: return ResponseEntity.status(401).build()
+        return mlApiClient.getItem(itemId)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
     }
 
     @GetMapping("/oauth/start")
     fun startOAuth(@RequestHeader("Authorization") token: String): ResponseEntity<MlOAuthStartResponse> {
         val userId = jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))!!
-        val authUrl = mlAccountUseCase.getOAuthUrl(userId)
-        return ResponseEntity.ok(MlOAuthStartResponse(authUrl))
+        return ResponseEntity.ok(MlOAuthStartResponse(mlAccountUseCase.getOAuthUrl(userId)))
     }
 
     @GetMapping("/oauth/callback")
@@ -38,9 +61,8 @@ class MercadoLivreOAuthController(
         @RequestParam(required = false) error: String?
     ): RedirectView {
         if (error != null) {
-            return RedirectView("/dashboard/settings/integrations?ml=error&error_desc=$error")
+            return RedirectView("$frontendUrl/dashboard/settings/integrations?ml=error&error_desc=$error")
         }
-
         return try {
             mlAccountUseCase.handleCallback(code, state)
             RedirectView("$frontendUrl/dashboard/settings/integrations?ml=success")
