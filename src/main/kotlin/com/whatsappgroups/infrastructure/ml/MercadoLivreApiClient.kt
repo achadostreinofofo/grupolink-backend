@@ -8,9 +8,12 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.WebClientResponseException
 import org.springframework.web.reactive.function.client.bodyToMono
 import reactor.netty.http.client.HttpClient
 import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Component
 class MercadoLivreApiClient(
@@ -103,16 +106,20 @@ class MercadoLivreApiClient(
     }
 
     fun exchangeCodeForToken(code: String, redirectUri: String): MlTokenResponse {
+        val encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
         return try {
             val response = webClient.post()
                 .uri("/oauth/token")
                 .contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue("grant_type=authorization_code&code=$code&redirect_uri=$redirectUri&client_id=$clientId&client_secret=$clientSecret")
+                .bodyValue("grant_type=authorization_code&code=$code&redirect_uri=$encodedRedirectUri&client_id=$clientId&client_secret=$clientSecret")
                 .retrieve()
                 .bodyToMono<MlTokenResponse>()
                 .block() ?: throw IllegalStateException("No token response from ML")
             log.info("Successfully exchanged authorization code for token")
             response
+        } catch (e: WebClientResponseException) {
+            log.error("ML token exchange failed: ${e.statusCode} - ${e.responseBodyAsString}")
+            throw e
         } catch (e: Exception) {
             log.error("Error exchanging code for token: ${e.message}", e)
             throw e
@@ -130,6 +137,9 @@ class MercadoLivreApiClient(
                 .block() ?: throw IllegalStateException("No token response from ML refresh")
             log.info("Successfully refreshed access token")
             response
+        } catch (e: WebClientResponseException) {
+            log.error("ML token refresh failed: ${e.statusCode} - ${e.responseBodyAsString}")
+            throw e
         } catch (e: Exception) {
             log.error("Error refreshing token: ${e.message}", e)
             throw e
