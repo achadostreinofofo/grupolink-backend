@@ -28,6 +28,10 @@ class MercadoLivreApiClient(
         .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
         .build()
 
+    private val pageClient = WebClient.builder()
+        .codecs { it.defaultCodecs().maxInMemorySize(2 * 1024 * 1024) }
+        .build()
+
     fun resolveShortLink(meliUrl: String): String {
         var current = meliUrl
         for (hop in 1..5) {
@@ -53,6 +57,31 @@ class MercadoLivreApiClient(
 
         log.info("Resolved meli.la link: $meliUrl → $current")
         return current
+    }
+
+    fun extractItemIdFromPage(url: String): String? {
+        return try {
+            val body = pageClient.get()
+                .uri(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/json")
+                .retrieve()
+                .bodyToMono<String>()
+                .block()
+
+            // ML embeds product_id in JSON polycards metadata inside the page body
+            val pattern = Regex(""""product_id"\s*:\s*"((MLB|MLA|MLM|MLC|MCO|MPE|MLU|MLV)\d+)"""")
+            val match = pattern.find(body ?: "")
+            if (match != null) {
+                log.info("Extracted product_id from page body at $url: ${match.groupValues[1]}")
+                match.groupValues[1]
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            log.error("Error extracting product_id from page at $url: ${e.message}", e)
+            null
+        }
     }
 
     fun generateAffiliateLink(accessToken: String, itemId: String): String {
