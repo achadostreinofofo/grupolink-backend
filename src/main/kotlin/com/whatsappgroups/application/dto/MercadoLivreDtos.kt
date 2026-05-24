@@ -1,10 +1,26 @@
 package com.whatsappgroups.application.dto
 
+import com.fasterxml.jackson.annotation.JsonProperty
+
 data class MlStatusResponse(
     val connected: Boolean,
-    val nickname: String?
+    val nickname: String?,
+    val tokenValid: Boolean = false,
+    val tokenExpired: Boolean = false,
+    val error: String? = null
 )
 
 data class MlOAuthStartResponse(
     val authorizationUrl: String
+)
+
+data class MlItemDetails(
+    val id: String,
+    val title: String,
+    val permalink: String?,
+    val thumbnail: String?,
+    val price: Double?,
+    @JsonProperty("currency_id") val currencyId: String?,
+    val condition: String?,
+    @JsonProperty("available_quantity") val availableQuantity: Int?
 )
