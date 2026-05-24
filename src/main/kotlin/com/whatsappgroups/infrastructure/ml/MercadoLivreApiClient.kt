@@ -58,9 +58,14 @@ class MercadoLivreApiClient(
                 .retrieve()
                 .bodyToMono<Map<String, Any>>()
                 .block()
-            response?.get("url") as? String
+            val url = response?.get("url") as? String
+            if (url == null) log.warn("fetchSampleAffiliateLink: response had no 'url' field — body: $response")
+            url
+        } catch (e: WebClientResponseException) {
+            log.warn("fetchSampleAffiliateLink failed: ${e.statusCode} - ${e.responseBodyAsString}")
+            null
         } catch (e: Exception) {
-            log.warn("Could not fetch sample affiliate link (user may not be in affiliate program): ${e.message}")
+            log.warn("fetchSampleAffiliateLink failed: ${e.message}")
             null
         }
     }
