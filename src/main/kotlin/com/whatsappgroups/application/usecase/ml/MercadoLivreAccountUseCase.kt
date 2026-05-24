@@ -15,7 +15,9 @@ import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.LocalDateTime
+import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -35,10 +37,14 @@ class MercadoLivreAccountUseCase(
 
     fun getOAuthUrl(userId: UUID): String {
         val state = UUID.randomUUID().toString()
+        val codeVerifier = generateCodeVerifier()
+        val codeChallenge = generateCodeChallenge(codeVerifier)
         redisTemplate.opsForValue().set("ml:state:$state", userId.toString(), 10, TimeUnit.MINUTES)
+        redisTemplate.opsForValue().set("ml:pkce:$state", codeVerifier, 10, TimeUnit.MINUTES)
         val encodedRedirectUri = URLEncoder.encode(mlRedirectUri, StandardCharsets.UTF_8)
         return "https://auth.mercadolivre.com.br/authorization?" +
-                "response_type=code&client_id=$mlClientId&redirect_uri=$encodedRedirectUri&state=$state"
+                "response_type=code&client_id=$mlClientId&redirect_uri=$encodedRedirectUri&state=$state" +
+                "&code_challenge=$codeChallenge&code_challenge_method=S256"
     }
 
     @Transactional
@@ -46,9 +52,12 @@ class MercadoLivreAccountUseCase(
         val userIdStr = redisTemplate.opsForValue().get("ml:state:$state")
             ?: throw IllegalStateException("Invalid or expired state parameter")
         val userId = UUID.fromString(userIdStr)
+        val codeVerifier = redisTemplate.opsForValue().get("ml:pkce:$state")
+            ?: throw IllegalStateException("Invalid or expired PKCE state")
         redisTemplate.delete("ml:state:$state")
+        redisTemplate.delete("ml:pkce:$state")
 
-        val tokenResponse = mlApiClient.exchangeCodeForToken(code, mlRedirectUri)
+        val tokenResponse = mlApiClient.exchangeCodeForToken(code, mlRedirectUri, codeVerifier)
         val userInfo = mlApiClient.getMe(tokenResponse.accessToken)
         val user = userRepository.getReferenceById(userId)
         val existingAccount = mlAccountRepository.findByOwner(user).orElse(null)
@@ -260,6 +269,18 @@ class MercadoLivreAccountUseCase(
             log.error("Error resolving link $meliUrl: ${e.message}", e)
             null
         }
+    }
+
+    private fun generateCodeVerifier(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    private fun generateCodeChallenge(codeVerifier: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(codeVerifier.toByteArray(StandardCharsets.US_ASCII))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 
     private fun sha256(input: String): String {

@@ -105,13 +105,13 @@ class MercadoLivreApiClient(
         return current
     }
 
-    fun exchangeCodeForToken(code: String, redirectUri: String): MlTokenResponse {
+    fun exchangeCodeForToken(code: String, redirectUri: String, codeVerifier: String): MlTokenResponse {
         val encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
         return try {
             val response = webClient.post()
                 .uri("/oauth/token")
                 .contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue("grant_type=authorization_code&code=$code&redirect_uri=$encodedRedirectUri&client_id=$clientId&client_secret=$clientSecret")
+                .bodyValue("grant_type=authorization_code&code=$code&redirect_uri=$encodedRedirectUri&client_id=$clientId&client_secret=$clientSecret&code_verifier=$codeVerifier")
                 .retrieve()
                 .bodyToMono<MlTokenResponse>()
                 .block() ?: throw IllegalStateException("No token response from ML")
