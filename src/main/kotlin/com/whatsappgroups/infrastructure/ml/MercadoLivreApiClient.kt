@@ -70,7 +70,7 @@ class MercadoLivreApiClient(
                 .block()
 
             // ML embeds product_id in JSON polycards metadata inside the page body
-            val pattern = Regex(""""product_id"\s*:\s*"((MLB|MLA|MLM|MLC|MCO|MPE|MLU|MLV)\d+)"""")
+            val pattern = Regex("""product_id["\s:]+((MLB|MLA|MLM|MLC|MCO|MPE|MLU|MLV)\d+)""")
             val match = pattern.find(body ?: "")
             if (match != null) {
                 log.info("Extracted product_id from page body at $url: ${match.groupValues[1]}")
