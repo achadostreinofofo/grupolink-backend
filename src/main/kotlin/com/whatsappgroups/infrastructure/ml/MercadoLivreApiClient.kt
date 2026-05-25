@@ -143,12 +143,16 @@ class MercadoLivreApiClient(
 
     private fun extractAffiliateParamsFromUrl(url: String): Pair<String?, String?> {
         return try {
-            val query = URI(url).query ?: return null to null
-            val params = query.split("&").associate {
+            val uri = URI(url)
+            val queryParams = uri.query?.split("&")?.associate {
                 val i = it.indexOf('=')
                 if (i > 0) it.substring(0, i) to it.substring(i + 1) else it to ""
-            }
-            params["matt_word"] to params["matt_tool"]
+            } ?: emptyMap()
+            // matt_word can be a query param OR embedded in the path as /social/<value>
+            val mattWord = queryParams["matt_word"]
+                ?: Regex("""/social/([^/?&#]+)""").find(uri.path ?: "")?.groupValues?.get(1)
+            val mattTool = queryParams["matt_tool"]
+            mattWord to mattTool
         } catch (_: Exception) {
             null to null
         }

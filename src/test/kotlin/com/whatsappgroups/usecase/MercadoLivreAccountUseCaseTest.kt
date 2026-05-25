@@ -258,8 +258,9 @@ class MercadoLivreAccountUseCaseTest {
 
         val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/abc123", account)
 
-        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        assertThat(result).contains("/social/grupo_colossal_ofc")
         assertThat(result).contains("matt_tool=57009805")
+        assertThat(result).doesNotContain("/social/liviacorrida")
         assertThat(result).doesNotContain("matt_word=liviacorrida")
         assertThat(result).doesNotContain("matt_tool=63390150")
         assertThat(result).contains("forceInApp=true")
@@ -273,7 +274,7 @@ class MercadoLivreAccountUseCaseTest {
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/xyz", account)
 
-        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        assertThat(result).contains("/social/grupo_colossal_ofc")
         verify(mlApiClient, never()).resolveShortLink(any())
     }
 
@@ -286,7 +287,7 @@ class MercadoLivreAccountUseCaseTest {
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
 
-        assertThat(result).contains("matt_word=grupo_colossal_ofc")
+        assertThat(result).contains("/social/grupo_colossal_ofc")
         assertThat(result).contains("matt_tool=57009805")
         assertThat(result).contains("MLB-1234567")
     }

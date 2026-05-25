@@ -111,12 +111,14 @@ class MercadoLivreAccountUseCase(
 
     private fun parseAffiliateParams(affiliateUrl: String): Pair<String?, String?> {
         return try {
-            val query = URI(affiliateUrl).query ?: return null to null
-            val params = query.split("&").associate {
+            val uri = URI(affiliateUrl)
+            val params = uri.query?.split("&")?.associate {
                 val idx = it.indexOf('=')
                 if (idx > 0) it.substring(0, idx) to it.substring(idx + 1) else it to ""
-            }
-            params["matt_word"] to params["matt_tool"]
+            } ?: emptyMap()
+            val mattWord = params["matt_word"]
+                ?: Regex("""/social/([^/?&#]+)""").find(uri.path ?: "")?.groupValues?.get(1)
+            mattWord to params["matt_tool"]
         } catch (e: Exception) {
             null to null
         }
@@ -234,7 +236,8 @@ class MercadoLivreAccountUseCase(
         return result
     }
 
-    // Fetches canonical permalink from ML Items API, caches it, and appends affiliate params.
+    // Fetches canonical permalink from ML Items API, caches it, and builds an affiliate URL
+    // using the /social/<matt_word>?matt_tool=<matt_tool> format that ML affiliate links use.
     private fun buildCleanAffiliateUrl(mlbId: String, mattWord: String, mattTool: String): String? {
         val cacheKey = "ml:permalink:$mlbId"
         val permalink = redisTemplate.opsForValue().get(cacheKey) ?: run {
@@ -243,8 +246,8 @@ class MercadoLivreAccountUseCase(
             redisTemplate.opsForValue().set(cacheKey, p, 7, TimeUnit.DAYS)
             p
         }
-        val cleanPermalink = permalink.substringBefore("?")
-        return "$cleanPermalink?matt_word=$mattWord&matt_tool=$mattTool"
+        val cleanPermalink = permalink.substringBefore("?").removeSuffix("/")
+        return "$cleanPermalink/social/$mattWord?matt_tool=$mattTool"
     }
 
     // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).
@@ -253,10 +256,14 @@ class MercadoLivreAccountUseCase(
         return "MLB${match.groupValues[1]}"
     }
 
-    // Fallback: replaces or adds matt_word and matt_tool in an existing ML URL.
+    // Fallback: replaces or adds /social/<matt_word> in path and matt_tool query param.
     private fun buildAffiliateUrl(resolvedUrl: String, mattWord: String, mattTool: String): String {
         return try {
             val uri = URI(resolvedUrl)
+            // Strip existing /social/xxx path segment and trailing slash before appending ours
+            val cleanPath = (uri.path ?: "")
+                .replace(Regex("""/social/[^/]+"""), "")
+                .removeSuffix("/")
             val existingParams = uri.query
                 ?.split("&")
                 ?.filter { param ->
@@ -265,14 +272,11 @@ class MercadoLivreAccountUseCase(
                 }
                 ?.joinToString("&")
                 ?: ""
-
             val newQuery = buildString {
                 if (existingParams.isNotEmpty()) append(existingParams).append("&")
-                append("matt_word=").append(mattWord)
-                append("&matt_tool=").append(mattTool)
+                append("matt_tool=").append(mattTool)
             }
-
-            URI(uri.scheme, uri.userInfo, uri.host, uri.port, uri.path, newQuery, uri.fragment).toString()
+            URI(uri.scheme, uri.userInfo, uri.host, uri.port, "$cleanPath/social/$mattWord", newQuery, uri.fragment).toString()
         } catch (e: Exception) {
             log.error("Error building affiliate URL for $resolvedUrl: ${e.message}", e)
             resolvedUrl
