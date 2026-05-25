@@ -36,6 +36,20 @@ class MercadoLivreOAuthController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/resolve-affiliate")
+    fun resolveAffiliate(
+        @RequestHeader("Authorization") token: String,
+        @RequestParam url: String
+    ): ResponseEntity<Map<String, String>> {
+        jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))
+            ?: return ResponseEntity.status(401).build()
+        val (mattWord, mattTool) = mlApiClient.resolveAffiliateParams(url)
+        return if (mattWord != null && mattTool != null)
+            ResponseEntity.ok(mapOf("mattWord" to mattWord, "mattTool" to mattTool))
+        else
+            ResponseEntity.notFound().build()
+    }
+
     @GetMapping("/items/{itemId}")
     fun getItem(
         @PathVariable itemId: String,

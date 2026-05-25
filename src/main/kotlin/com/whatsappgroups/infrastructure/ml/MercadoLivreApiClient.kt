@@ -110,6 +110,50 @@ class MercadoLivreApiClient(
         return current
     }
 
+    // Follows redirects from any ML/meli.la URL and returns the first (matt_word, matt_tool)
+    // pair found in any hop. Returns (null, null) if not found after 5 hops.
+    fun resolveAffiliateParams(startUrl: String): Pair<String?, String?> {
+        var current = startUrl
+        for (hop in 0..5) {
+            val (w, t) = extractAffiliateParamsFromUrl(current)
+            if (w != null && t != null) {
+                log.info("Found affiliate params at hop $hop: $current")
+                return w to t
+            }
+
+            val next = try {
+                noRedirectClient.get()
+                    .uri(current)
+                    .exchangeToMono { response ->
+                        val loc = response.headers().asHttpHeaders().location?.toString()
+                        response.releaseBody().thenReturn(loc ?: "")
+                    }
+                    .block()
+            } catch (e: Exception) {
+                log.warn("Error resolving affiliate params from $current: ${e.message}")
+                break
+            }
+
+            if (next.isNullOrBlank()) break
+            current = if (next.startsWith("http")) next else URI(current).resolve(next).toString()
+        }
+        log.warn("No affiliate params found after resolving $startUrl → $current")
+        return null to null
+    }
+
+    private fun extractAffiliateParamsFromUrl(url: String): Pair<String?, String?> {
+        return try {
+            val query = URI(url).query ?: return null to null
+            val params = query.split("&").associate {
+                val i = it.indexOf('=')
+                if (i > 0) it.substring(0, i) to it.substring(i + 1) else it to ""
+            }
+            params["matt_word"] to params["matt_tool"]
+        } catch (_: Exception) {
+            null to null
+        }
+    }
+
     fun exchangeCodeForToken(code: String, redirectUri: String, codeVerifier: String): MlTokenResponse {
         val encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
         return try {
