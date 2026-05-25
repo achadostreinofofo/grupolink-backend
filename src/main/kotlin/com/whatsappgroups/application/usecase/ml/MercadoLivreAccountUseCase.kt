@@ -219,7 +219,12 @@ class MercadoLivreAccountUseCase(
             val meliUrl = match.value
             try {
                 val resolvedUrl = resolveLinkWithCache(meliUrl) ?: continue
-                val affiliateUrl = buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
+                val mlbId = extractMlbId(resolvedUrl)
+                val affiliateUrl = if (mlbId != null) {
+                    buildCleanAffiliateUrl(mlbId, mattWord, mattTool) ?: buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
+                } else {
+                    buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
+                }
                 result = result.replace(meliUrl, affiliateUrl)
                 log.info("Substituted affiliate link: $meliUrl → $affiliateUrl")
             } catch (e: Exception) {
@@ -229,7 +234,26 @@ class MercadoLivreAccountUseCase(
         return result
     }
 
-    // Replaces or adds matt_word and matt_tool, preserving all other URL parameters.
+    // Fetches canonical permalink from ML Items API, caches it, and appends affiliate params.
+    private fun buildCleanAffiliateUrl(mlbId: String, mattWord: String, mattTool: String): String? {
+        val cacheKey = "ml:permalink:$mlbId"
+        val permalink = redisTemplate.opsForValue().get(cacheKey) ?: run {
+            val item = mlApiClient.getItem(mlbId) ?: return null
+            val p = item.permalink ?: return null
+            redisTemplate.opsForValue().set(cacheKey, p, 7, TimeUnit.DAYS)
+            p
+        }
+        val cleanPermalink = permalink.substringBefore("?")
+        return "$cleanPermalink?matt_word=$mattWord&matt_tool=$mattTool"
+    }
+
+    // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).
+    private fun extractMlbId(url: String): String? {
+        val match = Regex("""MLB-?(\d+)""").find(url) ?: return null
+        return "MLB${match.groupValues[1]}"
+    }
+
+    // Fallback: replaces or adds matt_word and matt_tool in an existing ML URL.
     private fun buildAffiliateUrl(resolvedUrl: String, mattWord: String, mattTool: String): String {
         return try {
             val uri = URI(resolvedUrl)
