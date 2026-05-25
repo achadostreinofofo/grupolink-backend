@@ -259,6 +259,7 @@ class MercadoLivreAccountUseCaseTest {
         val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/abc123", account)
 
         assertThat(result).contains("/social/grupo_colossal_ofc")
+        assertThat(result).contains("matt_word=grupo_colossal_ofc")
         assertThat(result).contains("matt_tool=57009805")
         assertThat(result).doesNotContain("/social/liviacorrida")
         assertThat(result).doesNotContain("matt_word=liviacorrida")
@@ -288,6 +289,7 @@ class MercadoLivreAccountUseCaseTest {
         val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
 
         assertThat(result).contains("/social/grupo_colossal_ofc")
+        assertThat(result).contains("matt_word=grupo_colossal_ofc")
         assertThat(result).contains("matt_tool=57009805")
         assertThat(result).contains("MLB-1234567")
     }

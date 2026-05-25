@@ -247,7 +247,7 @@ class MercadoLivreAccountUseCase(
             p
         }
         val cleanPermalink = permalink.substringBefore("?").removeSuffix("/")
-        return "$cleanPermalink/social/$mattWord?matt_tool=$mattTool"
+        return "$cleanPermalink/social/$mattWord?matt_word=$mattWord&matt_tool=$mattTool"
     }
 
     // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).
@@ -274,7 +274,8 @@ class MercadoLivreAccountUseCase(
                 ?: ""
             val newQuery = buildString {
                 if (existingParams.isNotEmpty()) append(existingParams).append("&")
-                append("matt_tool=").append(mattTool)
+                append("matt_word=").append(mattWord)
+                append("&matt_tool=").append(mattTool)
             }
             URI(uri.scheme, uri.userInfo, uri.host, uri.port, "$cleanPath/social/$mattWord", newQuery, uri.fragment).toString()
         } catch (e: Exception) {
