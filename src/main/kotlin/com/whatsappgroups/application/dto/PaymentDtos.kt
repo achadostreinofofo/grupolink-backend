@@ -20,3 +20,16 @@ data class SubscriptionStatusResponse(
     val trialEndDate: String?,     // só para plano FREE (7 dias a partir de createdAt)
     val trialDaysLeft: Int?        // dias restantes do trial; 0 = expirado
 )
+
+data class DirectSubscribeRequest(
+    val plan: String,
+    val cardToken: String,
+    val payerEmail: String,
+    val identificationType: String = "CPF",
+    val identificationNumber: String,
+)
+
+data class DirectSubscribeResponse(
+    val subscriptionId: String,
+    val status: String,
+)

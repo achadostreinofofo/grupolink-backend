@@ -8,16 +8,20 @@ import com.mercadopago.exceptions.MPApiException
 import com.mercadopago.resources.preapproval.Preapproval
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
 import java.math.BigDecimal
 import java.util.UUID
 
 @Service
 class MercadoPagoService(
-    @Value("\${app.frontend-url}") private val frontendUrl: String
+    @Value("\${app.frontend-url}") private val frontendUrl: String,
+    @Value("\${app.mercadopago.access-token}") private val accessToken: String,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val subClient = PreapprovalClient()
+    private val restClient = RestClient.create()
 
     val planPrices = mapOf(
         "SMART"   to BigDecimal("128.00"),
@@ -56,6 +60,41 @@ class MercadoPagoService(
                     .build()
             )
             .build()
+
+    @Suppress("UNCHECKED_CAST")
+    fun createSubscriptionWithToken(planName: String, payerEmail: String, cardTokenId: String): String {
+        val price = planPrices[planName.uppercase()]
+            ?: throw IllegalArgumentException("Plano desconhecido: $planName")
+
+        val body = mapOf(
+            "reason"          to "GrupoLink - Plano $planName",
+            "payer_email"     to payerEmail,
+            "card_token_id"   to cardTokenId,
+            "status"          to "authorized",
+            "auto_recurring"  to mapOf(
+                "frequency"          to 1,
+                "frequency_type"     to "months",
+                "transaction_amount" to price,
+                "currency_id"        to "BRL"
+            )
+        )
+
+        val response = restClient.post()
+            .uri("https://api.mercadopago.com/preapproval")
+            .header("Authorization", "Bearer $accessToken")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .onStatus({ it.is4xxClientError || it.is5xxServerError }) { _, res ->
+                val errorBody = res.body.bufferedReader().readText()
+                log.error("Erro MP tokenized checkout ${res.statusCode.value()}: $errorBody")
+                throw RuntimeException("Erro ao processar pagamento: $errorBody")
+            }
+            .body(Map::class.java) as? Map<String, Any?>
+
+        return response?.get("id") as? String
+            ?: throw RuntimeException("Mercado Pago não retornou ID de assinatura")
+    }
 
     fun getSubscription(mpSubscriptionId: String): Preapproval? =
         runCatching { subClient.get(mpSubscriptionId) }
