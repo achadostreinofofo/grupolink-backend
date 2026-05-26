@@ -12,8 +12,7 @@ import java.math.BigDecimal
 
 @Service
 class MercadoPagoService(
-    @Value("\${app.frontend-url}") private val frontendUrl: String,
-    @Value("\${app.base-url}") private val backendUrl: String
+    @Value("\${app.frontend-url}") private val frontendUrl: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val subClient = PreapprovalClient()
@@ -32,7 +31,6 @@ class MercadoPagoService(
             .reason("GrupoLink - Plano $planName")
             .payerEmail(userEmail)
             .backUrl("$frontendUrl/billing/success?plan=${planName.lowercase()}")
-            .notificationUrl("$backendUrl/api/webhooks/mercadopago")
             .status("pending")
             .autoRecurring(
                 PreApprovalAutoRecurringCreateRequest.builder()
