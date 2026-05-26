@@ -57,7 +57,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(MPApiException::class)
     fun handleMercadoPagoApiError(ex: MPApiException): ResponseEntity<Map<String, String>> {
-        log.error("Erro na API do Mercado Pago: status=${ex.statusCode}, message=${ex.message}")
+        log.error("Erro na API do Mercado Pago: status=${ex.statusCode}, message=${ex.message}, body=${ex.apiResponse?.content}")
         val message = when (ex.statusCode) {
             400  -> "Dados inválidos enviados ao Mercado Pago."
             401  -> "Token do Mercado Pago inválido ou ausente. Configure MP_ACCESS_TOKEN."
