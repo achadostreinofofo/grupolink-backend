@@ -1,6 +1,7 @@
 package com.whatsappgroups.application.usecase.payment
 
 import com.whatsappgroups.application.dto.CheckoutResponse
+import com.whatsappgroups.application.dto.DirectSubscribeResponse
 import com.whatsappgroups.application.dto.SubscriptionStatusResponse
 import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.Subscription
@@ -73,6 +74,35 @@ class CheckoutUseCase(
             trialEndDate   = trialEnd?.toString(),
             trialDaysLeft  = daysLeft
         )
+    }
+
+    @Transactional
+    fun subscribeWithToken(userId: UUID, planName: String, cardToken: String, payerEmail: String): DirectSubscribeResponse {
+        val plan = runCatching { Plan.valueOf(planName.uppercase()) }
+            .getOrElse { throw IllegalArgumentException("Plano inválido: $planName. Use SMART, DIAMOND ou BLACK") }
+
+        if (plan == Plan.FREE) throw IllegalArgumentException("Não é possível assinar o plano FREE")
+
+        val user = userRepository.findById(userId)
+            .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        val mpSubscriptionId = mercadoPagoService.createSubscriptionWithToken(planName, payerEmail, cardToken)
+
+        subscriptionRepository.save(
+            Subscription(
+                owner         = user,
+                plan          = plan,
+                status        = SubscriptionStatus.ACTIVE,
+                mercadoPagoId = mpSubscriptionId,
+                payerEmail    = payerEmail,
+                amount        = mercadoPagoService.planPrices[planName.uppercase()]
+            )
+        )
+
+        user.plan = plan
+        user.updatedAt = LocalDateTime.now()
+
+        return DirectSubscribeResponse(subscriptionId = mpSubscriptionId, status = "ACTIVE")
     }
 
     @Transactional

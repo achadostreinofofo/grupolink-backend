@@ -2,6 +2,8 @@ package com.whatsappgroups.interfaces.api
 
 import com.whatsappgroups.application.dto.CheckoutResponse
 import com.whatsappgroups.application.dto.CreateCheckoutRequest
+import com.whatsappgroups.application.dto.DirectSubscribeRequest
+import com.whatsappgroups.application.dto.DirectSubscribeResponse
 import com.whatsappgroups.application.dto.SubscriptionStatusResponse
 import com.whatsappgroups.application.usecase.payment.CheckoutUseCase
 import jakarta.validation.Valid
@@ -27,6 +29,20 @@ class SubscriptionController(private val checkoutUseCase: CheckoutUseCase) {
         @AuthenticationPrincipal user: UserDetails
     ): ResponseEntity<SubscriptionStatusResponse> =
         ResponseEntity.ok(checkoutUseCase.getActiveSubscription(UUID.fromString(user.username)))
+
+    @PostMapping("/subscribe")
+    fun subscribeWithToken(
+        @AuthenticationPrincipal user: UserDetails,
+        @Valid @RequestBody request: DirectSubscribeRequest,
+    ): ResponseEntity<DirectSubscribeResponse> =
+        ResponseEntity.ok(
+            checkoutUseCase.subscribeWithToken(
+                userId    = UUID.fromString(user.username),
+                planName  = request.plan,
+                cardToken = request.cardToken,
+                payerEmail = request.payerEmail,
+            )
+        )
 
     @DeleteMapping("/cancel")
     fun cancel(@AuthenticationPrincipal user: UserDetails): ResponseEntity<Void> {
