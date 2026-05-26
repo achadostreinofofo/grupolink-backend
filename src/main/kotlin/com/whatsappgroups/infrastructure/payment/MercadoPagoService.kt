@@ -4,11 +4,13 @@ import com.mercadopago.client.preapproval.PreApprovalAutoRecurringCreateRequest
 import com.mercadopago.client.preapproval.PreapprovalClient
 import com.mercadopago.client.preapproval.PreapprovalCreateRequest
 import com.mercadopago.client.preapproval.PreapprovalUpdateRequest
+import com.mercadopago.exceptions.MPApiException
 import com.mercadopago.resources.preapproval.Preapproval
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
+import java.util.UUID
 
 @Service
 class MercadoPagoService(
@@ -27,9 +29,22 @@ class MercadoPagoService(
         val price = planPrices[planName.uppercase()]
             ?: throw IllegalArgumentException("Plano desconhecido: $planName")
 
-        val req = PreapprovalCreateRequest.builder()
+        return try {
+            subClient.create(buildRequest(planName, price, userEmail))
+        } catch (e: MPApiException) {
+            // MP rejects payer_email when it belongs to a non-Brazilian MP account.
+            // Retry with a neutral email so the user can still complete checkout normally.
+            if (e.statusCode == 400 && e.apiResponse?.content?.contains("different countries") == true) {
+                log.warn("payer_email $userEmail rejected by MP (country mismatch) — retrying with neutral email")
+                subClient.create(buildRequest(planName, price, "checkout+${UUID.randomUUID()}@redirectgrupo.com.br"))
+            } else throw e
+        }
+    }
+
+    private fun buildRequest(planName: String, price: BigDecimal, payerEmail: String): PreapprovalCreateRequest =
+        PreapprovalCreateRequest.builder()
             .reason("GrupoLink - Plano $planName")
-            .payerEmail(userEmail)
+            .payerEmail(payerEmail)
             .backUrl("$frontendUrl/billing/success?plan=${planName.lowercase()}")
             .status("pending")
             .autoRecurring(
@@ -41,9 +56,6 @@ class MercadoPagoService(
                     .build()
             )
             .build()
-
-        return subClient.create(req)
-    }
 
     fun getSubscription(mpSubscriptionId: String): Preapproval? =
         runCatching { subClient.get(mpSubscriptionId) }
