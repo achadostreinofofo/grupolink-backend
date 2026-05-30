@@ -3,6 +3,7 @@ package com.whatsappgroups.application.usecase.payment
 import com.whatsappgroups.application.dto.CheckoutResponse
 import com.whatsappgroups.application.dto.DirectSubscribeResponse
 import com.whatsappgroups.application.dto.SubscriptionStatusResponse
+import com.whatsappgroups.infrastructure.config.OwnerAccount
 import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.Subscription
 import com.whatsappgroups.domain.model.SubscriptionStatus
@@ -27,7 +28,8 @@ class CheckoutUseCase(
         val plan = runCatching { Plan.valueOf(planName.uppercase()) }
             .getOrElse { throw IllegalArgumentException("Plano inválido: $planName. Use SMART, DIAMOND ou BLACK") }
 
-        if (plan == Plan.FREE) throw IllegalArgumentException("Não é possível assinar o plano FREE")
+        if (plan == Plan.FREE)    throw IllegalArgumentException("Não é possível assinar o plano FREE")
+        if (plan == Plan.MAXIMUS) throw IllegalArgumentException("Plano exclusivo — não disponível para assinatura")
 
         val user = userRepository.findById(userId)
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
@@ -57,6 +59,20 @@ class CheckoutUseCase(
     fun getActiveSubscription(userId: UUID): SubscriptionStatusResponse {
         val user = userRepository.findById(userId)
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        // Conta owner tem plano Maximus exclusivo independente do DB
+        if (OwnerAccount.isOwner(user.email)) {
+            return SubscriptionStatusResponse(
+                subscriptionId = null,
+                plan           = Plan.MAXIMUS.name,
+                status         = "ACTIVE",
+                payerEmail     = user.email,
+                periodEndDate  = null,
+                trialEndDate   = null,
+                trialDaysLeft  = null
+            )
+        }
+
         val active = subscriptionRepository
             .findByOwnerAndStatusIn(user, listOf(SubscriptionStatus.ACTIVE, SubscriptionStatus.PENDING))
             .firstOrNull()
@@ -85,6 +101,8 @@ class CheckoutUseCase(
 
         val user = userRepository.findById(userId)
             .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        if (OwnerAccount.isOwner(user.email)) throw IllegalArgumentException("Plano exclusivo — não disponível para assinatura")
 
         val mpSubscriptionId = mercadoPagoService.createSubscriptionWithToken(planName, payerEmail, cardToken)
 

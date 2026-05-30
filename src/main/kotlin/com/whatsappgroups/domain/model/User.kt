@@ -4,7 +4,7 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.util.UUID
 
-enum class Plan { FREE, SMART, DIAMOND, BLACK }
+enum class Plan { FREE, SMART, DIAMOND, BLACK, MAXIMUS }
 enum class UserStatus { PENDING_VERIFICATION, ACTIVE }
 
 @Entity
