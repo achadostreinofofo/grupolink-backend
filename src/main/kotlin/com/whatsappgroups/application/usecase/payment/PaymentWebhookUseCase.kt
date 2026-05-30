@@ -4,6 +4,7 @@ import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.SubscriptionStatus
 import com.whatsappgroups.domain.repository.SubscriptionRepository
 import com.whatsappgroups.domain.repository.UserRepository
+import com.whatsappgroups.infrastructure.config.OwnerAccount
 import com.whatsappgroups.infrastructure.payment.MercadoPagoService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -54,6 +55,7 @@ class PaymentWebhookUseCase(
         val user = userRepository.findById(subscription.owner.id!!)
             .orElse(null) ?: return
 
+        if (OwnerAccount.isOwner(user.email)) return  // plano Maximus é imutável via webhook
         user.plan = if (newStatus == SubscriptionStatus.ACTIVE) subscription.plan else Plan.FREE
         user.updatedAt = LocalDateTime.now()
 
