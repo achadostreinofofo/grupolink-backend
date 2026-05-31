@@ -3,6 +3,8 @@ package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
+import com.whatsappgroups.application.usecase.shortlink.ShortLinkResponse
+import com.whatsappgroups.application.usecase.shortlink.ShortLinkUseCase
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.model.User
 import com.whatsappgroups.domain.repository.MercadoLivreAccountRepository
@@ -33,6 +35,7 @@ class MercadoLivreAccountUseCaseTest {
     @Mock private lateinit var mlAccountRepository: MercadoLivreAccountRepository
     @Mock private lateinit var userRepository: UserRepository
     @Mock private lateinit var mlApiClient: MercadoLivreApiClient
+    @Mock private lateinit var shortLinkUseCase: ShortLinkUseCase
     @Mock private lateinit var redisTemplate: RedisTemplate<String, String>
     @Mock private lateinit var valueOps: ValueOperations<String, String>
 
@@ -43,7 +46,7 @@ class MercadoLivreAccountUseCaseTest {
     fun setUp() {
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
         useCase = MercadoLivreAccountUseCase(
-            mlAccountRepository, userRepository, mlApiClient, redisTemplate,
+            mlAccountRepository, userRepository, mlApiClient, shortLinkUseCase, redisTemplate,
             mlClientId = "test-client-id", mlRedirectUri = "http://localhost:8080/api/ml/oauth/callback"
         )
     }
@@ -286,13 +289,18 @@ class MercadoLivreAccountUseCaseTest {
                 permalink = "https://produto.mercadolivre.com.br/MLB-1234567-titulo",
                 thumbnail = null, price = null, currencyId = null, condition = null, availableQuantity = null
             ))
+        whenever(shortLinkUseCase.create(eq(userId), any()))
+            .thenReturn(ShortLinkResponse(
+                id = "uuid-1", code = "abc123",
+                shortUrl = "https://redirectgrupo.com.br/abc123",
+                targetUrl = "https://produto.mercadolivre.com.br/MLB-1234567-titulo/social/grupo_colossal_ofc?matt_word=grupo_colossal_ofc&matt_tool=57009805",
+                title = null, clicks = 0, active = true, expiresAt = null, createdAt = "2024-01-01T00:00:00"
+            ))
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
 
-        assertThat(result).contains("/social/grupo_colossal_ofc")
-        assertThat(result).contains("matt_word=grupo_colossal_ofc")
-        assertThat(result).contains("matt_tool=57009805")
-        assertThat(result).contains("MLB-1234567")
+        assertThat(result).isEqualTo("https://redirectgrupo.com.br/abc123")
+        verify(shortLinkUseCase).create(eq(userId), any())
     }
 
     @Test
