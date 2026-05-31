@@ -46,7 +46,7 @@ data class IncomingWhatsappMessageRequest(
     @field:NotBlank val groupId: String,
     val senderJid: String? = null,
     val messageId: String? = null,
-    @field:NotBlank val text: String,
+    val text: String = "",             // pode ser vazio quando a mensagem é só imagem
     val imageBase64: String? = null,  // buffer da imagem em base64, quando presente
     val imageMimeType: String? = null,
     val timestamp: Long? = null

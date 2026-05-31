@@ -13,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -253,8 +255,22 @@ class MercadoLivreAccountUseCase(
         if (cached != null) return cached
 
         val response = shortLinkUseCase.create(ownerId, CreateShortLinkRequest(targetUrl = affiliateUrl))
-        redisTemplate.opsForValue().set(cacheKey, response.shortUrl, 30, TimeUnit.DAYS)
-        return response.shortUrl
+        val shortUrl = response.shortUrl
+
+        // Only cache in Redis after the outer transaction commits.
+        // If the transaction rolls back, the short_link row is gone from the DB but
+        // Redis would hold a stale URL for 30 days, causing every click to 404.
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() {
+                    redisTemplate.opsForValue().set(cacheKey, shortUrl, 30, TimeUnit.DAYS)
+                }
+            })
+        } else {
+            redisTemplate.opsForValue().set(cacheKey, shortUrl, 30, TimeUnit.DAYS)
+        }
+
+        return shortUrl
     }
 
     // Fetches canonical permalink from ML Items API, caches it, and builds an affiliate URL
