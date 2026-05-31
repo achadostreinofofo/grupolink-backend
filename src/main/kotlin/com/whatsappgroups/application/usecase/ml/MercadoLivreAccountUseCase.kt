@@ -2,6 +2,8 @@ package com.whatsappgroups.application.usecase.ml
 
 import com.whatsappgroups.application.dto.MlAffiliateParamsRequest
 import com.whatsappgroups.application.dto.MlStatusResponse
+import com.whatsappgroups.application.usecase.shortlink.CreateShortLinkRequest
+import com.whatsappgroups.application.usecase.shortlink.ShortLinkUseCase
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.repository.MercadoLivreAccountRepository
 import com.whatsappgroups.domain.repository.UserRepository
@@ -26,6 +28,7 @@ class MercadoLivreAccountUseCase(
     private val mlAccountRepository: MercadoLivreAccountRepository,
     private val userRepository: UserRepository,
     private val mlApiClient: MercadoLivreApiClient,
+    private val shortLinkUseCase: ShortLinkUseCase,
     private val redisTemplate: RedisTemplate<String, String>,
     @Value("\${app.mercadolivre.client-id:}")
     private val mlClientId: String,
@@ -216,6 +219,9 @@ class MercadoLivreAccountUseCase(
             return text
         }
 
+        // Hibernate proxy always exposes the id without triggering lazy load
+        val ownerId = account.owner.id ?: return text
+
         var result = text
         for (match in meliLinkPattern.findAll(text)) {
             val meliUrl = match.value
@@ -227,13 +233,24 @@ class MercadoLivreAccountUseCase(
                 } else {
                     buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
                 }
-                result = result.replace(meliUrl, affiliateUrl)
-                log.info("Substituted affiliate link: $meliUrl → $affiliateUrl")
+                val shortUrl = shortenWithCache(ownerId, affiliateUrl)
+                result = result.replace(meliUrl, shortUrl)
+                log.info("Substituted affiliate link: $meliUrl → $shortUrl")
             } catch (e: Exception) {
                 log.error("Error processing link $meliUrl: ${e.message}", e)
             }
         }
         return result
+    }
+
+    private fun shortenWithCache(ownerId: UUID, affiliateUrl: String): String {
+        val cacheKey = "ml:shorturl:${sha256(affiliateUrl)}"
+        val cached = redisTemplate.opsForValue().get(cacheKey)
+        if (cached != null) return cached
+
+        val response = shortLinkUseCase.create(ownerId, CreateShortLinkRequest(targetUrl = affiliateUrl))
+        redisTemplate.opsForValue().set(cacheKey, response.shortUrl, 30, TimeUnit.DAYS)
+        return response.shortUrl
     }
 
     // Fetches canonical permalink from ML Items API, caches it, and builds an affiliate URL
