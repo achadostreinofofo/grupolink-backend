@@ -1,6 +1,7 @@
 @file:Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
 package com.whatsappgroups.usecase
 
+import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.model.User
@@ -250,41 +251,41 @@ class MercadoLivreAccountUseCaseTest {
     }
 
     @Test
-    fun `resolveAndReplaceLinks replaces affiliate params on resolved URL`() {
+    fun `resolveAndReplaceLinks keeps original link when resolved URL has no MLB product ID`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
         whenever(valueOps.get(any())).thenReturn(null)
         whenever(mlApiClient.resolveShortLink("https://meli.la/abc123"))
-            .thenReturn("https://www.mercadolivre.com.br/social/promo?matt_word=liviacorrida&matt_tool=63390150&forceInApp=true")
+            .thenReturn("https://www.mercadolivre.com.br/social/promo?matt_word=liviacorrida&matt_tool=63390150")
 
         val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/abc123", account)
 
-        assertThat(result).contains("/social/grupo_colossal_ofc")
-        assertThat(result).contains("matt_word=grupo_colossal_ofc")
-        assertThat(result).contains("matt_tool=57009805")
-        assertThat(result).doesNotContain("/social/liviacorrida")
-        assertThat(result).doesNotContain("matt_word=liviacorrida")
-        assertThat(result).doesNotContain("matt_tool=63390150")
-        assertThat(result).contains("forceInApp=true")
+        assertThat(result).isEqualTo("Veja: https://meli.la/abc123")
     }
 
     @Test
-    fun `resolveAndReplaceLinks uses cached resolved URL without calling resolveShortLink`() {
+    fun `resolveAndReplaceLinks keeps original link when cached URL has no MLB product ID`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
         whenever(valueOps.get(any()))
             .thenReturn("https://www.mercadolivre.com.br/produto?matt_word=other&matt_tool=99999")
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/xyz", account)
 
-        assertThat(result).contains("/social/grupo_colossal_ofc")
+        assertThat(result).isEqualTo("https://meli.la/xyz")
         verify(mlApiClient, never()).resolveShortLink(any())
     }
 
     @Test
-    fun `resolveAndReplaceLinks adds affiliate params to URL without existing params`() {
+    fun `resolveAndReplaceLinks builds clean affiliate URL for product link with MLB ID`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
         whenever(valueOps.get(any())).thenReturn(null)
         whenever(mlApiClient.resolveShortLink("https://meli.la/prod"))
             .thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo")
+        whenever(mlApiClient.getItem("MLB1234567"))
+            .thenReturn(MlItemDetails(
+                id = "MLB1234567", title = "Produto Teste",
+                permalink = "https://produto.mercadolivre.com.br/MLB-1234567-titulo",
+                thumbnail = null, price = null, currencyId = null, condition = null, availableQuantity = null
+            ))
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
 

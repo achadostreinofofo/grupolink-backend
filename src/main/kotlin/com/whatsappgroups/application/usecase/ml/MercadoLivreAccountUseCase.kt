@@ -228,10 +228,14 @@ class MercadoLivreAccountUseCase(
             try {
                 val resolvedUrl = resolveLinkWithCache(meliUrl) ?: continue
                 val mlbId = extractMlbId(resolvedUrl)
-                val affiliateUrl = if (mlbId != null) {
-                    buildCleanAffiliateUrl(mlbId, mattWord, mattTool) ?: buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
-                } else {
-                    buildAffiliateUrl(resolvedUrl, mattWord, mattTool)
+                if (mlbId == null) {
+                    log.warn("Nenhum MLB ID encontrado em $resolvedUrl — link mantido sem alteração")
+                    continue
+                }
+                val affiliateUrl = buildCleanAffiliateUrl(mlbId, mattWord, mattTool)
+                if (affiliateUrl == null) {
+                    log.warn("Items API não retornou permalink para $mlbId — link mantido sem alteração")
+                    continue
                 }
                 val shortUrl = shortenWithCache(ownerId, affiliateUrl)
                 result = result.replace(meliUrl, shortUrl)
