@@ -1,6 +1,7 @@
 package com.whatsappgroups.application.dto
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import jakarta.validation.constraints.NotBlank
 
 data class MlStatusResponse(
     val connected: Boolean,
@@ -26,7 +27,17 @@ data class MlItemDetails(
     val permalink: String?,
     val thumbnail: String?,
     val price: Double?,
+    @JsonProperty("original_price") val originalPrice: Double?,
     @JsonProperty("currency_id") val currencyId: String?,
     val condition: String?,
     @JsonProperty("available_quantity") val availableQuantity: Int?
+)
+
+data class GenerateMessageRequest(
+    @field:NotBlank(message = "productUrl é obrigatório")
+    val productUrl: String
+)
+
+data class GenerateMessageResponse(
+    val content: String
 )

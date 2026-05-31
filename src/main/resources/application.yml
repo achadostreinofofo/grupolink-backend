@@ -103,6 +103,10 @@ app:
     client-secret: ${ML_CLIENT_SECRET:}
     redirect-uri: ${ML_REDIRECT_URI:http://localhost:8080/api/ml/oauth/callback}
 
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.0-flash}
+
   rate-limit:
     redirect-limit: ${RATE_LIMIT_REDIRECT:30}   # máx requests por janela
     window-seconds: ${RATE_LIMIT_WINDOW:60}       # tamanho da janela em segundos
