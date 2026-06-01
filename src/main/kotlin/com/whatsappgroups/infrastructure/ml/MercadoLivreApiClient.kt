@@ -79,8 +79,10 @@ class MercadoLivreApiClient(
                 .bodyToMono<MlItemDetails>()
                 .block()
         } catch (e: WebClientResponseException) {
-            log.error("ML API error for item $itemId: HTTP ${e.statusCode} — ${e.responseBodyAsString.take(300)}")
-            null
+            val body = e.responseBodyAsString.take(300)
+            log.error("ML API HTTP ${e.statusCode} for item $itemId: $body")
+            // Propagate HTTP error details so the caller can surface them for debugging
+            throw IllegalStateException("[DEBUG] ML API HTTP ${e.statusCode.value()} para ID $itemId: $body")
         } catch (e: Exception) {
             log.error("Error fetching item $itemId: ${e.message}", e)
             null
