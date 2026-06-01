@@ -47,25 +47,24 @@ class MercadoLivreApiClient(
         }
     }
 
-    // Calls /affiliate_program/link with any valid item to capture the user's matt_word and matt_tool.
-    // Returns the full affiliate URL or null if the user is not in the affiliate program.
-    fun fetchSampleAffiliateLink(accessToken: String): String? {
-        val probeItemId = "MLB1828680414"
+    // Calls /affiliate_program/link for a specific item and returns the affiliate URL.
+    // Returns null if the user is not in the affiliate program or the item is not found.
+    fun getAffiliateLinkForItem(accessToken: String, mlbId: String): String? {
         return try {
             val response = webClient.get()
-                .uri("/affiliate_program/link?item_id={id}", probeItemId)
+                .uri("/affiliate_program/link?item_id={id}", mlbId)
                 .header("Authorization", "Bearer $accessToken")
                 .retrieve()
                 .bodyToMono<Map<String, Any>>()
                 .block()
             val url = response?.get("url") as? String
-            if (url == null) log.warn("fetchSampleAffiliateLink: response had no 'url' field — body: $response")
+            if (url == null) log.warn("getAffiliateLinkForItem: sem campo 'url' para $mlbId — body: $response")
             url
         } catch (e: WebClientResponseException) {
-            log.warn("fetchSampleAffiliateLink failed: ${e.statusCode} - ${e.responseBodyAsString}")
+            log.warn("getAffiliateLinkForItem falhou [$mlbId]: ${e.statusCode} - ${e.responseBodyAsString}")
             null
         } catch (e: Exception) {
-            log.warn("fetchSampleAffiliateLink failed: ${e.message}")
+            log.warn("getAffiliateLinkForItem falhou [$mlbId]: ${e.message}")
             null
         }
     }
