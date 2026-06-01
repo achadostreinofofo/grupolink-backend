@@ -1,7 +1,6 @@
 @file:Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
 package com.whatsappgroups.usecase
 
-import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.application.usecase.shortlink.ShortLinkResponse
 import com.whatsappgroups.application.usecase.shortlink.ShortLinkUseCase
@@ -278,29 +277,41 @@ class MercadoLivreAccountUseCaseTest {
     }
 
     @Test
-    fun `resolveAndReplaceLinks builds clean affiliate URL for product link with MLB ID`() {
+    fun `resolveAndReplaceLinks substitutes affiliate link for product URL with MLB ID`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        val affiliateUrl = "https://produto.mercadolivre.com.br/MLB-1234567-titulo?matt_word=grupo_colossal_ofc&matt_tool=57009805"
         whenever(valueOps.get(any())).thenReturn(null)
         whenever(mlApiClient.resolveShortLink("https://meli.la/prod"))
             .thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo")
-        whenever(mlApiClient.getItem("MLB1234567"))
-            .thenReturn(MlItemDetails(
-                id = "MLB1234567", title = "Produto Teste",
-                permalink = "https://produto.mercadolivre.com.br/MLB-1234567-titulo",
-                thumbnail = null, price = null, currencyId = null, condition = null, availableQuantity = null
-            ))
+        whenever(mlApiClient.getAffiliateLinkForItem("test-access-token", "MLB1234567"))
+            .thenReturn(affiliateUrl)
         whenever(shortLinkUseCase.create(eq(userId), any()))
             .thenReturn(ShortLinkResponse(
                 id = "uuid-1", code = "abc123",
                 shortUrl = "https://redirectgrupo.com.br/abc123",
-                targetUrl = "https://produto.mercadolivre.com.br/MLB-1234567-titulo/social/grupo_colossal_ofc?matt_word=grupo_colossal_ofc&matt_tool=57009805",
+                targetUrl = affiliateUrl,
                 title = null, clicks = 0, active = true, expiresAt = null, createdAt = "2024-01-01T00:00:00"
             ))
 
         val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
 
         assertThat(result).isEqualTo("https://redirectgrupo.com.br/abc123")
+        verify(mlApiClient).getAffiliateLinkForItem("test-access-token", "MLB1234567")
         verify(shortLinkUseCase).create(eq(userId), any())
+    }
+
+    @Test
+    fun `resolveAndReplaceLinks keeps original link when affiliate API returns null`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.resolveShortLink("https://meli.la/prod"))
+            .thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo")
+        whenever(mlApiClient.getAffiliateLinkForItem(any(), any())).thenReturn(null)
+
+        val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
+
+        assertThat(result).isEqualTo("https://meli.la/prod")
+        verify(shortLinkUseCase, never()).create(any(), any())
     }
 
     @Test

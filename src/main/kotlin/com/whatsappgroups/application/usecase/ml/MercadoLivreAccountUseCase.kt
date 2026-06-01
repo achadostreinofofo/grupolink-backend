@@ -100,7 +100,7 @@ class MercadoLivreAccountUseCase(
 
     private fun tryAutoCapturAffiliateParams(account: MercadoLivreAccount, userId: UUID) {
         try {
-            val sampleUrl = mlApiClient.fetchSampleAffiliateLink(account.accessToken) ?: return
+            val sampleUrl = mlApiClient.getAffiliateLinkForItem(account.accessToken, "MLB1828680414") ?: return
             val (mattWord, mattTool) = parseAffiliateParams(sampleUrl)
             if (mattWord != null && mattTool != null) {
                 account.mattWord = mattWord
@@ -234,9 +234,9 @@ class MercadoLivreAccountUseCase(
                     log.warn("Nenhum MLB ID encontrado em $resolvedUrl — link mantido sem alteração")
                     continue
                 }
-                val affiliateUrl = buildCleanAffiliateUrl(mlbId, mattWord, mattTool)
+                val affiliateUrl = fetchAffiliateLinkWithCache(mlbId, account.accessToken, ownerId)
                 if (affiliateUrl == null) {
-                    log.warn("Items API não retornou permalink para $mlbId — link mantido sem alteração")
+                    log.warn("ML affiliate API não retornou link para $mlbId — link mantido sem alteração")
                     continue
                 }
                 val shortUrl = shortenWithCache(ownerId, affiliateUrl)
@@ -273,52 +273,21 @@ class MercadoLivreAccountUseCase(
         return shortUrl
     }
 
-    // Fetches canonical permalink from ML Items API, caches it, and builds an affiliate URL
-    // using the /social/<matt_word>?matt_tool=<matt_tool> format that ML affiliate links use.
-    private fun buildCleanAffiliateUrl(mlbId: String, mattWord: String, mattTool: String): String? {
-        val cacheKey = "ml:permalink:$mlbId"
-        val permalink = redisTemplate.opsForValue().get(cacheKey) ?: run {
-            val item = mlApiClient.getItem(mlbId) ?: return null
-            val p = item.permalink ?: return null
-            redisTemplate.opsForValue().set(cacheKey, p, 7, TimeUnit.DAYS)
-            p
-        }
-        val cleanPermalink = permalink.substringBefore("?").removeSuffix("/")
-        return "$cleanPermalink/social/$mattWord?matt_word=$mattWord&matt_tool=$mattTool"
+    // Calls ML affiliate API for the specific item and caches the result per user+product.
+    private fun fetchAffiliateLinkWithCache(mlbId: String, accessToken: String, ownerId: UUID): String? {
+        val cacheKey = "ml:affiliatelink:$ownerId:$mlbId"
+        val cached = redisTemplate.opsForValue().get(cacheKey)
+        if (cached != null) return cached
+
+        val url = mlApiClient.getAffiliateLinkForItem(accessToken, mlbId) ?: return null
+        redisTemplate.opsForValue().set(cacheKey, url, 7, TimeUnit.DAYS)
+        return url
     }
 
     // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).
     private fun extractMlbId(url: String): String? {
         val match = Regex("""MLB-?(\d+)""").find(url) ?: return null
         return "MLB${match.groupValues[1]}"
-    }
-
-    // Fallback: replaces or adds /social/<matt_word> in path and matt_tool query param.
-    private fun buildAffiliateUrl(resolvedUrl: String, mattWord: String, mattTool: String): String {
-        return try {
-            val uri = URI(resolvedUrl)
-            // Strip existing /social/xxx path segment and trailing slash before appending ours
-            val cleanPath = (uri.path ?: "")
-                .replace(Regex("""/social/[^/]+"""), "")
-                .removeSuffix("/")
-            val existingParams = uri.query
-                ?.split("&")
-                ?.filter { param ->
-                    val key = param.substringBefore("=")
-                    key != "matt_word" && key != "matt_tool" && key != "tag"
-                }
-                ?.joinToString("&")
-                ?: ""
-            val newQuery = buildString {
-                if (existingParams.isNotEmpty()) append(existingParams).append("&")
-                append("matt_word=").append(mattWord)
-                append("&matt_tool=").append(mattTool)
-            }
-            URI(uri.scheme, uri.userInfo, uri.host, uri.port, "$cleanPath/social/$mattWord", newQuery, uri.fragment).toString()
-        } catch (e: Exception) {
-            log.error("Error building affiliate URL for $resolvedUrl: ${e.message}", e)
-            resolvedUrl
-        }
     }
 
     // Caches the resolved meli.la URL for 7 days to avoid repeated HTTP requests.
