@@ -27,6 +27,7 @@ class GenerateMessageFromLinkUseCase(
         } else url
 
         val mlbId = extractMlbId(resolvedUrl)
+            ?: mlApiClient.extractMlbIdFromPageHtml(resolvedUrl)
             ?: throw IllegalArgumentException("Link não corresponde a um produto específico do Mercado Livre")
 
         val item = mlApiClient.getItem(mlbId)
