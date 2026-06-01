@@ -26,9 +26,11 @@ class GenerateMessageFromLinkUseCase(
             mlApiClient.resolveShortLink(url)
         } else url
 
-        val mlbId = extractMlbId(resolvedUrl)
+        val mlbId = extractMlbId(resolvedUrl)?.also { log.info("MLB ID from URL: $it") }
             ?: mlApiClient.extractMlbIdFromPageHtml(resolvedUrl)
             ?: throw IllegalArgumentException("Link não corresponde a um produto específico do Mercado Livre")
+
+        log.info("Fetching ML item: $mlbId (resolved from $url)")
 
         val item = mlApiClient.getItem(mlbId)
             ?: throw IllegalStateException("Não foi possível acessar as informações do produto. Verifique se o link é válido e tente novamente.")

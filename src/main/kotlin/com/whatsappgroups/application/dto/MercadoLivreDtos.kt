@@ -1,5 +1,6 @@
 package com.whatsappgroups.application.dto
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.constraints.NotBlank
 
@@ -21,6 +22,7 @@ data class MlAffiliateParamsRequest(
     val mattTool: String
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class MlItemDetails(
     val id: String,
     val title: String,
