@@ -14,6 +14,7 @@ import reactor.netty.http.client.HttpClient
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 
 @Component
 class MercadoLivreApiClient(
@@ -85,7 +86,7 @@ class MercadoLivreApiClient(
 
     fun resolveShortLink(meliUrl: String): String {
         var current = meliUrl
-        for (hop in 1..5) {
+        for (hop in 1..10) {
             val location = try {
                 noRedirectClient.get()
                     .uri(current)
@@ -101,12 +102,47 @@ class MercadoLivreApiClient(
 
             if (location.isNullOrBlank()) break
 
-            current = if (location.startsWith("http")) location
-                      else URI(current).resolve(location).toString()
+            current = when {
+                location.startsWith("http") -> location
+                location.startsWith("//") -> URI(current).scheme + ":" + location
+                else -> URI(current).resolve(location).toString()
+            }
         }
 
         log.info("Resolved meli.la link: $meliUrl → $current")
         return current
+    }
+
+    fun extractMlbIdFromPageHtml(url: String): String? {
+        return try {
+            val htmlClient = WebClient.builder()
+                .clientConnector(ReactorClientHttpConnector(
+                    HttpClient.create()
+                        .followRedirect(true)
+                        .responseTimeout(Duration.ofSeconds(15))
+                ))
+                .build()
+
+            val body = htmlClient.get()
+                .uri(url)
+                .header("User-Agent", "Mozilla/5.0 (compatible; GrupoLink/1.0)")
+                .retrieve()
+                .bodyToMono<String>()
+                .block() ?: return null
+
+            val match = Regex("""MLB-?(\d+)""").find(body)
+            if (match != null) {
+                val id = "MLB${match.groupValues[1]}"
+                log.info("Extracted MLB ID from page HTML: $id (from $url)")
+                id
+            } else {
+                log.warn("No MLB ID found in page HTML for $url")
+                null
+            }
+        } catch (e: Exception) {
+            log.warn("extractMlbIdFromPageHtml failed for $url: ${e.message}")
+            null
+        }
     }
 
     // Follows redirects from any ML/meli.la URL and returns the first (matt_word, matt_tool)
