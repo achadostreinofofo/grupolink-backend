@@ -33,6 +33,18 @@ class MercadoLivreApiClient(
         .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
         .build()
 
+    // Used to fetch social profile pages as a browser would, to extract embedded product URLs
+    private val htmlClient = WebClient.builder()
+        .clientConnector(ReactorClientHttpConnector(
+            HttpClient.create()
+                .followRedirect(true)
+                .responseTimeout(Duration.ofSeconds(10))
+        ))
+        .defaultHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .defaultHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .defaultHeader("Accept-Language", "pt-BR,pt;q=0.9")
+        .build()
+
     fun validateToken(accessToken: String): Boolean {
         return try {
             webClient.get()
@@ -116,19 +128,12 @@ class MercadoLivreApiClient(
         return current
     }
 
+    // Fetches HTML of a social profile page and extracts the featured product's MLB ID.
+    // Checks canonical/og:url/meta-refresh/window.location first, then falls back to any MLB in the body.
     fun extractMlbIdFromPageHtml(url: String): String? {
         return try {
-            val htmlClient = WebClient.builder()
-                .clientConnector(ReactorClientHttpConnector(
-                    HttpClient.create()
-                        .followRedirect(true)
-                        .responseTimeout(Duration.ofSeconds(15))
-                ))
-                .build()
-
             val body = htmlClient.get()
                 .uri(url)
-                .header("User-Agent", "Mozilla/5.0 (compatible; GrupoLink/1.0)")
                 .retrieve()
                 .bodyToMono<String>()
                 .block() ?: return null
@@ -137,21 +142,13 @@ class MercadoLivreApiClient(
             fun extractFrom(candidate: String?): String? =
                 candidate?.let { mlbIdRegex.find(it)?.let { m -> "MLB${m.groupValues[1]}" } }
 
-            // Ordered list of places to look — most authoritative first
             val candidateUrls = sequence {
-                // meta refresh: <meta http-equiv="refresh" content="0; url=...">
                 Regex("""<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^;]+;\s*url=([^"'\s>]+)""", RegexOption.IGNORE_CASE)
                     .find(body)?.groupValues?.get(1)?.also { yield(it) }
-
-                // window.location / window.location.href / location.href assignments
                 Regex("""(?:window\.location(?:\.href)?|location\.href)\s*=\s*["']([^"']+)["']""")
                     .findAll(body).forEach { yield(it.groupValues[1]) }
-
-                // <link rel="canonical">
                 Regex("""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                     .find(body)?.groupValues?.get(1)?.also { yield(it) }
-
-                // <meta property="og:url">
                 Regex("""<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                     .find(body)?.groupValues?.get(1)?.also { yield(it) }
             }
@@ -159,21 +156,17 @@ class MercadoLivreApiClient(
             for (candidate in candidateUrls) {
                 val id = extractFrom(candidate)
                 if (id != null) {
-                    log.info("Extracted MLB ID from page HTML: $id (from $url via redirect/meta)")
+                    log.info("MLB ID extraído do HTML da página: $id (de $url)")
                     return id
                 }
             }
 
-            // Last resort: first MLB occurrence anywhere in the body
             val fallback = mlbIdRegex.find(body)?.let { "MLB${it.groupValues[1]}" }
-            if (fallback != null) {
-                log.info("Extracted MLB ID from page HTML (body fallback): $fallback (from $url)")
-            } else {
-                log.warn("No MLB ID found in page HTML for $url")
-            }
+            if (fallback != null) log.info("MLB ID extraído do body (fallback): $fallback (de $url)")
+            else log.warn("Nenhum MLB ID encontrado no HTML de $url")
             fallback
         } catch (e: Exception) {
-            log.warn("extractMlbIdFromPageHtml failed for $url: ${e.message}")
+            log.warn("extractMlbIdFromPageHtml falhou para $url: ${e.message}")
             null
         }
     }
