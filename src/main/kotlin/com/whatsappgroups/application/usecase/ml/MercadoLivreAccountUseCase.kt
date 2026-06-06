@@ -230,6 +230,7 @@ class MercadoLivreAccountUseCase(
             try {
                 val resolvedUrl = resolveLinkWithCache(meliUrl) ?: continue
                 val mlbId = extractMlbId(resolvedUrl)
+                    ?: if (resolvedUrl.contains("/social/")) extractMlbIdFromSocialWithCache(resolvedUrl) else null
                 if (mlbId == null) {
                     log.warn("Nenhum MLB ID encontrado em $resolvedUrl — link mantido sem alteração")
                     continue
@@ -271,6 +272,20 @@ class MercadoLivreAccountUseCase(
         }
 
         return shortUrl
+    }
+
+    // Fetches HTML of a social profile page to extract the featured product's MLB ID.
+    // Cached for 24 hours since the same social URL always points to the same product.
+    private fun extractMlbIdFromSocialWithCache(socialUrl: String): String? {
+        val cacheKey = "ml:social-mlbid:${sha256(socialUrl)}"
+        val cached = redisTemplate.opsForValue().get(cacheKey)
+        if (cached != null) {
+            return cached.takeIf { it.isNotBlank() }
+        }
+        val mlbId = mlApiClient.extractMlbIdFromPageHtml(socialUrl)
+        redisTemplate.opsForValue().set(cacheKey, mlbId ?: "", 24, TimeUnit.HOURS)
+        log.info("MLB ID extraído do HTML de $socialUrl → $mlbId")
+        return mlbId
     }
 
     // Calls ML affiliate API for the specific item and caches the result per user+product.
