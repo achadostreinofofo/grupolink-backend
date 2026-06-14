@@ -33,13 +33,16 @@ class MercadoLivreApiClient(
         .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
         .build()
 
-    // Used to fetch social profile pages as a browser would, to extract embedded product URLs
+    // Used to fetch social profile pages as a browser would, to extract embedded product URLs.
+    // ML social pages are large (>300 KB), so the in-memory buffer limit is raised well above the
+    // 256 KB WebClient default — otherwise bodyToMono(String) throws before the HTML can be parsed.
     private val htmlClient = WebClient.builder()
         .clientConnector(ReactorClientHttpConnector(
             HttpClient.create()
                 .followRedirect(true)
                 .responseTimeout(Duration.ofSeconds(10))
         ))
+        .codecs { it.defaultCodecs().maxInMemorySize(8 * 1024 * 1024) }
         .defaultHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         .defaultHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         .defaultHeader("Accept-Language", "pt-BR,pt;q=0.9")
