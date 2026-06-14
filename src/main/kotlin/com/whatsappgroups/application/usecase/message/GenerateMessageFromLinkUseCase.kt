@@ -2,19 +2,22 @@ package com.whatsappgroups.application.usecase.message
 
 import com.whatsappgroups.application.dto.GenerateMessageRequest
 import com.whatsappgroups.application.dto.GenerateMessageResponse
+import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.infrastructure.ai.GeminiClient
 import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.util.UUID
 
 @Service
 class GenerateMessageFromLinkUseCase(
     private val mlApiClient: MercadoLivreApiClient,
-    private val geminiClient: GeminiClient
+    private val geminiClient: GeminiClient,
+    private val mlAccountUseCase: MercadoLivreAccountUseCase
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun generate(request: GenerateMessageRequest): GenerateMessageResponse {
+    fun generate(userId: UUID, request: GenerateMessageRequest): GenerateMessageResponse {
         val url = request.productUrl.trim()
 
         if (!isMercadoLivreUrl(url)) {
@@ -32,7 +35,11 @@ class GenerateMessageFromLinkUseCase(
 
         log.info("Fetching ML item: $mlbId (resolved from $url)")
 
-        val item = mlApiClient.getItem(mlbId)
+        // The items API now requires authentication, so a connected ML account is mandatory.
+        val accessToken = mlAccountUseCase.getValidAccessToken(userId)
+            ?: throw IllegalStateException("Conecte sua conta do Mercado Livre nas integrações para gerar o texto a partir do link.")
+
+        val item = mlApiClient.getItem(mlbId, accessToken)
             ?: throw IllegalStateException("Não foi possível acessar as informações do produto. Verifique se o link é válido e tente novamente.")
 
         if (item.title.isBlank() || item.price == null) {

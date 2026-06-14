@@ -55,9 +55,11 @@ class MercadoLivreOAuthController(
         @PathVariable itemId: String,
         @RequestHeader("Authorization") token: String
     ): ResponseEntity<MlItemDetails> {
-        jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))
+        val userId = jwtTokenProvider.extractUserId(token.removePrefix("Bearer "))
             ?: return ResponseEntity.status(401).build()
-        return mlApiClient.getItem(itemId)
+        // Items API requires authentication — use the user's ML access token.
+        val accessToken = mlAccountUseCase.getValidAccessToken(userId)
+        return mlApiClient.getItem(itemId, accessToken)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
     }
