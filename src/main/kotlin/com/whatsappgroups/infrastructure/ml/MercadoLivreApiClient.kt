@@ -33,13 +33,16 @@ class MercadoLivreApiClient(
         .clientConnector(ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
         .build()
 
-    // Used to fetch social profile pages as a browser would, to extract embedded product URLs
+    // Used to fetch social profile pages as a browser would, to extract embedded product URLs.
+    // ML social pages are large (>300 KB), so the in-memory buffer limit is raised well above the
+    // 256 KB WebClient default — otherwise bodyToMono(String) throws before the HTML can be parsed.
     private val htmlClient = WebClient.builder()
         .clientConnector(ReactorClientHttpConnector(
             HttpClient.create()
                 .followRedirect(true)
                 .responseTimeout(Duration.ofSeconds(10))
         ))
+        .codecs { it.defaultCodecs().maxInMemorySize(8 * 1024 * 1024) }
         .defaultHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         .defaultHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         .defaultHeader("Accept-Language", "pt-BR,pt;q=0.9")
@@ -109,8 +112,7 @@ class MercadoLivreApiClient(
         return current
     }
 
-    // Fetches HTML of a social profile page and extracts the featured product's MLB ID.
-    // Checks canonical/og:url/meta-refresh/window.location first, then falls back to any MLB in the body.
+    // Fetches HTML of a social profile page and extracts the shared product's MLB ID.
     fun extractMlbIdFromPageHtml(url: String): String? {
         return try {
             val body = htmlClient.get()
@@ -118,38 +120,53 @@ class MercadoLivreApiClient(
                 .retrieve()
                 .bodyToMono<String>()
                 .block() ?: return null
-
-            val mlbIdRegex = Regex("""MLB-?(\d+)""")
-            fun extractFrom(candidate: String?): String? =
-                candidate?.let { mlbIdRegex.find(it)?.let { m -> "MLB${m.groupValues[1]}" } }
-
-            val candidateUrls = sequence {
-                Regex("""<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^;]+;\s*url=([^"'\s>]+)""", RegexOption.IGNORE_CASE)
-                    .find(body)?.groupValues?.get(1)?.also { yield(it) }
-                Regex("""(?:window\.location(?:\.href)?|location\.href)\s*=\s*["']([^"']+)["']""")
-                    .findAll(body).forEach { yield(it.groupValues[1]) }
-                Regex("""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                    .find(body)?.groupValues?.get(1)?.also { yield(it) }
-                Regex("""<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                    .find(body)?.groupValues?.get(1)?.also { yield(it) }
-            }
-
-            for (candidate in candidateUrls) {
-                val id = extractFrom(candidate)
-                if (id != null) {
-                    log.info("MLB ID extraído do HTML da página: $id (de $url)")
-                    return id
-                }
-            }
-
-            val fallback = mlbIdRegex.find(body)?.let { "MLB${it.groupValues[1]}" }
-            if (fallback != null) log.info("MLB ID extraído do body (fallback): $fallback (de $url)")
-            else log.warn("Nenhum MLB ID encontrado no HTML de $url")
-            fallback
+            parseSharedMlbIdFromHtml(body, url)
         } catch (e: Exception) {
             log.warn("extractMlbIdFromPageHtml falhou para $url: ${e.message}")
             null
         }
+    }
+
+    // Parses the shared product's MLB id from a social/profile page HTML body.
+    // Priority: "item_id" (the shared product) → meta-refresh/window.location/canonical/og:url →
+    // first MLB in the body (last-resort fallback). Internal so it can be unit-tested without HTTP.
+    internal fun parseSharedMlbIdFromHtml(body: String, url: String = ""): String? {
+        val mlbIdRegex = Regex("""MLB-?(\d+)""")
+        fun extractFrom(candidate: String?): String? =
+            candidate?.let { mlbIdRegex.find(it)?.let { m -> "MLB${m.groupValues[1]}" } }
+
+        // Affiliate "social" pages embed the shared product as "item_id":"MLB..." in the page
+        // state. This is the authoritative product: canonical/og:url point back to the profile
+        // page, and a naive "first MLB in the body" grabs an unrelated recommendation/tracking id.
+        Regex(""""item_id"\s*:\s*"(MLB\d+)"""").find(body)?.let {
+            val id = it.groupValues[1]
+            log.info("MLB ID extraído de item_id (produto compartilhado): $id (de $url)")
+            return id
+        }
+
+        val candidateUrls = sequence {
+            Regex("""<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^;]+;\s*url=([^"'\s>]+)""", RegexOption.IGNORE_CASE)
+                .find(body)?.groupValues?.get(1)?.also { yield(it) }
+            Regex("""(?:window\.location(?:\.href)?|location\.href)\s*=\s*["']([^"']+)["']""")
+                .findAll(body).forEach { yield(it.groupValues[1]) }
+            Regex("""<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(body)?.groupValues?.get(1)?.also { yield(it) }
+            Regex("""<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(body)?.groupValues?.get(1)?.also { yield(it) }
+        }
+
+        for (candidate in candidateUrls) {
+            val id = extractFrom(candidate)
+            if (id != null) {
+                log.info("MLB ID extraído do HTML da página: $id (de $url)")
+                return id
+            }
+        }
+
+        val fallback = mlbIdRegex.find(body)?.let { "MLB${it.groupValues[1]}" }
+        if (fallback != null) log.info("MLB ID extraído do body (fallback): $fallback (de $url)")
+        else log.warn("Nenhum MLB ID encontrado no HTML de $url")
+        return fallback
     }
 
     // Follows redirects from any ML/meli.la URL and returns the first (matt_word, matt_tool)
