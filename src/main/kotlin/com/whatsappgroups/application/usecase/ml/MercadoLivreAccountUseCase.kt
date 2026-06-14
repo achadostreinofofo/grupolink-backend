@@ -167,6 +167,33 @@ class MercadoLivreAccountUseCase(
         }
     }
 
+    /**
+     * Returns a currently-valid access token for the user's ML account, refreshing it when needed.
+     * Returns null when the user has no ML account connected or the token cannot be refreshed.
+     */
+    @Transactional
+    fun getValidAccessToken(userId: UUID): String? {
+        val user = userRepository.getReferenceById(userId)
+        val account = mlAccountRepository.findByOwner(user).orElse(null) ?: return null
+
+        if (mlApiClient.validateToken(account.accessToken)) return account.accessToken
+
+        val refreshToken = account.refreshToken ?: return null
+        return try {
+            val tokenResponse = mlApiClient.refreshToken(refreshToken)
+            account.accessToken = tokenResponse.accessToken
+            if (tokenResponse.refreshToken != null) account.refreshToken = tokenResponse.refreshToken
+            account.tokenExpiresAt = tokenResponse.expiresIn?.let { LocalDateTime.now().plusSeconds(it) }
+            account.updatedAt = LocalDateTime.now()
+            mlAccountRepository.save(account)
+            redisTemplate.opsForValue().set("ml:tokenvalid:$userId", "valid", 5, TimeUnit.MINUTES)
+            account.accessToken
+        } catch (e: Exception) {
+            log.warn("Não foi possível renovar token ML para $userId: ${e.message}")
+            null
+        }
+    }
+
     @Transactional
     fun disconnect(userId: UUID) {
         val user = userRepository.getReferenceById(userId)
