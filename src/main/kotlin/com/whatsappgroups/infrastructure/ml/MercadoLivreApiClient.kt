@@ -60,33 +60,14 @@ class MercadoLivreApiClient(
         }
     }
 
-    // Calls /affiliate_program/link for a specific item and returns the affiliate URL.
-    // Returns null if the user is not in the affiliate program or the item is not found.
-    fun getAffiliateLinkForItem(accessToken: String, mlbId: String): String? {
+    // Items API now requires authentication. When an access token is provided it is sent as
+    // a Bearer header; callers without a user context fall back to an unauthenticated call.
+    fun getItem(itemId: String, accessToken: String? = null): MlItemDetails? {
         return try {
-            val response = webClient.get()
-                .uri("/affiliate_program/link?item_id={id}", mlbId)
-                .header("Authorization", "Bearer $accessToken")
-                .retrieve()
-                .bodyToMono<Map<String, Any>>()
-                .block()
-            val url = response?.get("url") as? String
-            if (url == null) log.warn("getAffiliateLinkForItem: sem campo 'url' para $mlbId — body: $response")
-            url
-        } catch (e: WebClientResponseException) {
-            log.warn("getAffiliateLinkForItem falhou [$mlbId]: ${e.statusCode} - ${e.responseBodyAsString}")
-            null
-        } catch (e: Exception) {
-            log.warn("getAffiliateLinkForItem falhou [$mlbId]: ${e.message}")
-            null
-        }
-    }
-
-    // Items API is public — no auth required for published items
-    fun getItem(itemId: String): MlItemDetails? {
-        return try {
-            webClient.get()
-                .uri("/items/{itemId}", itemId)
+            val request = webClient.get().uri("/items/{itemId}", itemId)
+            val authed = if (!accessToken.isNullOrBlank())
+                request.header("Authorization", "Bearer $accessToken") else request
+            authed
                 .retrieve()
                 .bodyToMono<MlItemDetails>()
                 .block()

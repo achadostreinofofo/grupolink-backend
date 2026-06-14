@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
-import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -90,43 +89,11 @@ class MercadoLivreAccountUseCase(
         val saved = mlAccountRepository.save(account)
         redisTemplate.delete("ml:tokenvalid:$userId")
 
-        // Auto-capture affiliate params (matt_word / matt_tool) from the affiliate program API.
-        // This is best-effort: if the user is not registered in the ML affiliate program, it is skipped.
-        tryAutoCapturAffiliateParams(saved, userId)
-
+        // Affiliate params (matt_word / matt_tool) are provided by the user via saveAffiliateParams.
+        // The ML public API has no endpoint to generate affiliate links, so there is nothing to
+        // auto-capture here.
         log.info("ML account connected for user $userId: ${userInfo.nickname}")
         return saved
-    }
-
-    private fun tryAutoCapturAffiliateParams(account: MercadoLivreAccount, userId: UUID) {
-        try {
-            val sampleUrl = mlApiClient.getAffiliateLinkForItem(account.accessToken, "MLB1828680414") ?: return
-            val (mattWord, mattTool) = parseAffiliateParams(sampleUrl)
-            if (mattWord != null && mattTool != null) {
-                account.mattWord = mattWord
-                account.mattTool = mattTool
-                account.updatedAt = LocalDateTime.now()
-                mlAccountRepository.save(account)
-                log.info("Auto-captured affiliate params for user $userId: matt_word=$mattWord, matt_tool=$mattTool")
-            }
-        } catch (e: Exception) {
-            log.warn("Failed to auto-capture affiliate params for user $userId: ${e.message}")
-        }
-    }
-
-    private fun parseAffiliateParams(affiliateUrl: String): Pair<String?, String?> {
-        return try {
-            val uri = URI(affiliateUrl)
-            val params = uri.query?.split("&")?.associate {
-                val idx = it.indexOf('=')
-                if (idx > 0) it.substring(0, idx) to it.substring(idx + 1) else it to ""
-            } ?: emptyMap()
-            val mattWord = params["matt_word"]
-                ?: Regex("""/social/([^/?&#]+)""").find(uri.path ?: "")?.groupValues?.get(1)
-            mattWord to params["matt_tool"]
-        } catch (e: Exception) {
-            null to null
-        }
     }
 
     @Transactional
@@ -186,9 +153,6 @@ class MercadoLivreAccountUseCase(
             mlAccountRepository.save(account)
             redisTemplate.opsForValue().set(cacheKey, "valid", 5, TimeUnit.MINUTES)
 
-            // If affiliate params were not captured before, try again with the refreshed token
-            if (!affiliateConfigured) tryAutoCapturAffiliateParams(account, userId)
-
             MlStatusResponse(
                 connected = true, nickname = account.mlNickname, tokenValid = true,
                 affiliateConfigured = !account.mattWord.isNullOrBlank() && !account.mattTool.isNullOrBlank()
@@ -229,25 +193,73 @@ class MercadoLivreAccountUseCase(
             val meliUrl = match.value
             try {
                 val resolvedUrl = resolveLinkWithCache(meliUrl) ?: continue
-                val mlbId = extractMlbId(resolvedUrl)
+
+                // When the short link resolves straight to a product page the MLB id is in the URL.
+                // For affiliate "social" pages the id has to be extracted from the rendered HTML.
+                val directMlbId = extractMlbId(resolvedUrl)
+                val mlbId = directMlbId
                     ?: if (resolvedUrl.contains("/social/")) extractMlbIdFromSocialWithCache(resolvedUrl) else null
                 if (mlbId == null) {
                     log.warn("Nenhum MLB ID encontrado em $resolvedUrl — link mantido sem alteração")
                     continue
                 }
-                val affiliateUrl = fetchAffiliateLinkWithCache(mlbId, account.accessToken, ownerId)
-                if (affiliateUrl == null) {
-                    log.warn("ML affiliate API não retornou link para $mlbId — link mantido sem alteração")
-                    continue
+
+                // Canonical product URL: reuse the resolved URL when it already points to the product,
+                // otherwise look up the permalink via the items API (falling back to a built URL).
+                val baseProductUrl = if (directMlbId != null && !resolvedUrl.contains("/social/")) {
+                    resolvedUrl
+                } else {
+                    resolvePermalinkWithCache(mlbId, account.accessToken)
+                        ?: "https://www.mercadolivre.com.br/p/$mlbId"
                 }
+
+                // Attribution is done purely through the matt_word / matt_tool query params of the
+                // logged-in user. ML has no public API to mint affiliate links.
+                val affiliateUrl = appendAffiliateParams(baseProductUrl, mattWord, mattTool)
                 val shortUrl = shortenWithCache(ownerId, affiliateUrl)
                 result = result.replace(meliUrl, shortUrl)
-                log.info("Substituted affiliate link: $meliUrl → $shortUrl")
+                log.info("Substituted affiliate link: $meliUrl → $shortUrl (matt_word=$mattWord)")
             } catch (e: Exception) {
                 log.error("Error processing link $meliUrl: ${e.message}", e)
             }
         }
         return result
+    }
+
+    // Removes the sharer's affiliate/tracking params and appends the logged-in user's own ones,
+    // so the redistributed link attributes the sale to the current account.
+    private fun appendAffiliateParams(url: String, mattWord: String, mattTool: String): String {
+        val base = stripAffiliateParams(url)
+        val sep = if (base.contains("?")) "&" else "?"
+        val w = URLEncoder.encode(mattWord, StandardCharsets.UTF_8)
+        val t = URLEncoder.encode(mattTool, StandardCharsets.UTF_8)
+        return "$base${sep}matt_word=$w&matt_tool=$t"
+    }
+
+    private val affiliateParamKeys = setOf(
+        "matt_word", "matt_tool", "ref", "forceInApp", "matt_product_id", "tracking_id"
+    )
+
+    private fun stripAffiliateParams(url: String): String {
+        val qIdx = url.indexOf('?')
+        if (qIdx < 0) return url
+        val path = url.substring(0, qIdx)
+        val kept = url.substring(qIdx + 1)
+            .split("&")
+            .filter { it.isNotBlank() && it.substringBefore('=') !in affiliateParamKeys }
+        return if (kept.isEmpty()) path else "$path?${kept.joinToString("&")}"
+    }
+
+    // Looks up the canonical product permalink and caches it per product for 7 days.
+    private fun resolvePermalinkWithCache(mlbId: String, accessToken: String): String? {
+        val cacheKey = "ml:permalink:$mlbId"
+        val cached = redisTemplate.opsForValue().get(cacheKey)
+        if (cached != null) return cached.takeIf { it.isNotBlank() }
+
+        val permalink = mlApiClient.getItem(mlbId, accessToken)?.permalink
+        redisTemplate.opsForValue().set(cacheKey, permalink ?: "", 7, TimeUnit.DAYS)
+        if (permalink == null) log.warn("Items API não retornou permalink para $mlbId")
+        return permalink
     }
 
     private fun shortenWithCache(ownerId: UUID, affiliateUrl: String): String {
@@ -286,17 +298,6 @@ class MercadoLivreAccountUseCase(
         redisTemplate.opsForValue().set(cacheKey, mlbId ?: "", 24, TimeUnit.HOURS)
         log.info("MLB ID extraído do HTML de $socialUrl → $mlbId")
         return mlbId
-    }
-
-    // Calls ML affiliate API for the specific item and caches the result per user+product.
-    private fun fetchAffiliateLinkWithCache(mlbId: String, accessToken: String, ownerId: UUID): String? {
-        val cacheKey = "ml:affiliatelink:$ownerId:$mlbId"
-        val cached = redisTemplate.opsForValue().get(cacheKey)
-        if (cached != null) return cached
-
-        val url = mlApiClient.getAffiliateLinkForItem(accessToken, mlbId) ?: return null
-        redisTemplate.opsForValue().set(cacheKey, url, 7, TimeUnit.DAYS)
-        return url
     }
 
     // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).
