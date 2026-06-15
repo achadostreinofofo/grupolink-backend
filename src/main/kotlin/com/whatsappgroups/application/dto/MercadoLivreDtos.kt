@@ -35,6 +35,21 @@ data class MlItemDetails(
     @JsonProperty("available_quantity") val availableQuantity: Int?
 )
 
+// Catalog product (/products/{id}). Used as a fallback when /items/{id} returns 403 for
+// catalog products. Title is `name`; price comes from the buy box winner.
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MlProductDetails(
+    val id: String?,
+    val name: String?,
+    @JsonProperty("buy_box_winner") val buyBoxWinner: MlBuyBoxWinner?
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MlBuyBoxWinner(
+    val price: Double?,
+    @JsonProperty("original_price") val originalPrice: Double?
+)
+
 data class GenerateMessageRequest(
     @field:NotBlank(message = "productUrl é obrigatório")
     val productUrl: String
