@@ -2,9 +2,6 @@
 package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
-import com.whatsappgroups.application.usecase.shortlink.CreateShortLinkRequest
-import com.whatsappgroups.application.usecase.shortlink.ShortLinkResponse
-import com.whatsappgroups.application.usecase.shortlink.ShortLinkUseCase
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.model.User
 import com.whatsappgroups.domain.repository.MercadoLivreAccountRepository
@@ -35,7 +32,6 @@ class MercadoLivreAccountUseCaseTest {
     @Mock private lateinit var mlAccountRepository: MercadoLivreAccountRepository
     @Mock private lateinit var userRepository: UserRepository
     @Mock private lateinit var mlApiClient: MercadoLivreApiClient
-    @Mock private lateinit var shortLinkUseCase: ShortLinkUseCase
     @Mock private lateinit var redisTemplate: RedisTemplate<String, String>
     @Mock private lateinit var valueOps: ValueOperations<String, String>
 
@@ -46,7 +42,7 @@ class MercadoLivreAccountUseCaseTest {
     fun setUp() {
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
         useCase = MercadoLivreAccountUseCase(
-            mlAccountRepository, userRepository, mlApiClient, shortLinkUseCase, redisTemplate,
+            mlAccountRepository, userRepository, mlApiClient, redisTemplate,
             mlClientId = "test-client-id", mlRedirectUri = "http://localhost:8080/api/ml/oauth/callback"
         )
     }
@@ -285,17 +281,13 @@ class MercadoLivreAccountUseCaseTest {
         whenever(mlApiClient.resolveShortLink("https://meli.la/prod"))
             .thenReturn("https://produto.mercadolivre.com.br/MLB-1234567-titulo?matt_word=sharer&matt_tool=999")
 
-        val requestCaptor = argumentCaptor<CreateShortLinkRequest>()
-        whenever(shortLinkUseCase.create(eq(userId), requestCaptor.capture()))
-            .thenReturn(shortLinkResponse("https://redirectgrupo.com.br/abc123"))
+        val result = useCase.resolveAndReplaceLinks("Veja: https://meli.la/prod", account)
 
-        val result = useCase.resolveAndReplaceLinks("https://meli.la/prod", account)
-
-        assertThat(result).isEqualTo("https://redirectgrupo.com.br/abc123")
-        // The product URL is kept, the sharer's matt params are dropped, ours are appended
-        assertThat(requestCaptor.firstValue.targetUrl)
-            .isEqualTo("https://produto.mercadolivre.com.br/MLB-1234567-titulo?matt_word=grupo_colossal_ofc&matt_tool=57009805")
-        // No items API call needed when the URL already points to the product
+        // The full product URL is posted as-is (not shortened): the sharer's matt params are
+        // dropped and the logged-in user's are appended.
+        assertThat(result).isEqualTo(
+            "Veja: https://produto.mercadolivre.com.br/MLB-1234567-titulo?matt_word=grupo_colossal_ofc&matt_tool=57009805"
+        )
         verify(mlApiClient, never()).getItem(any(), any())
     }
 
@@ -309,16 +301,12 @@ class MercadoLivreAccountUseCaseTest {
         whenever(mlApiClient.extractSharedProductUrlFromPage(any()))
             .thenReturn("https://www.mercadolivre.com.br/beta-alanina-250g/p/MLB9999999")
 
-        val requestCaptor = argumentCaptor<CreateShortLinkRequest>()
-        whenever(shortLinkUseCase.create(eq(userId), requestCaptor.capture()))
-            .thenReturn(shortLinkResponse("https://redirectgrupo.com.br/soc123"))
-
         val result = useCase.resolveAndReplaceLinks("https://meli.la/social", account)
 
-        assertThat(result).isEqualTo("https://redirectgrupo.com.br/soc123")
-        // The real product permalink (with slug) is used + the logged-in user's affiliate params
-        assertThat(requestCaptor.firstValue.targetUrl)
-            .isEqualTo("https://www.mercadolivre.com.br/beta-alanina-250g/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805")
+        // The real product permalink (with slug) + the logged-in user's affiliate params, full URL
+        assertThat(result).isEqualTo(
+            "https://www.mercadolivre.com.br/beta-alanina-250g/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805"
+        )
         verify(mlApiClient, never()).getItem(any(), any())
     }
 
@@ -333,7 +321,6 @@ class MercadoLivreAccountUseCaseTest {
         val result = useCase.resolveAndReplaceLinks("https://meli.la/social", account)
 
         assertThat(result).isEqualTo("https://meli.la/social")
-        verify(shortLinkUseCase, never()).create(any(), any())
     }
 
     @Test
@@ -347,12 +334,6 @@ class MercadoLivreAccountUseCaseTest {
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private fun shortLinkResponse(shortUrl: String) = ShortLinkResponse(
-        id = "uuid-1", code = shortUrl.substringAfterLast('/'),
-        shortUrl = shortUrl, targetUrl = "ignored",
-        title = null, clicks = 0, active = true, expiresAt = null, createdAt = "2024-01-01T00:00:00"
-    )
 
     private fun user() = User(id = userId, email = "u@t.com", passwordHash = "h", name = "U")
 

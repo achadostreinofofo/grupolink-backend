@@ -2,8 +2,6 @@ package com.whatsappgroups.application.usecase.ml
 
 import com.whatsappgroups.application.dto.MlAffiliateParamsRequest
 import com.whatsappgroups.application.dto.MlStatusResponse
-import com.whatsappgroups.application.usecase.shortlink.CreateShortLinkRequest
-import com.whatsappgroups.application.usecase.shortlink.ShortLinkUseCase
 import com.whatsappgroups.domain.model.MercadoLivreAccount
 import com.whatsappgroups.domain.repository.MercadoLivreAccountRepository
 import com.whatsappgroups.domain.repository.UserRepository
@@ -13,8 +11,6 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.transaction.support.TransactionSynchronization
-import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -29,7 +25,6 @@ class MercadoLivreAccountUseCase(
     private val mlAccountRepository: MercadoLivreAccountRepository,
     private val userRepository: UserRepository,
     private val mlApiClient: MercadoLivreApiClient,
-    private val shortLinkUseCase: ShortLinkUseCase,
     private val redisTemplate: RedisTemplate<String, String>,
     @Value("\${app.mercadolivre.client-id:}")
     private val mlClientId: String,
@@ -212,9 +207,6 @@ class MercadoLivreAccountUseCase(
             return text
         }
 
-        // Hibernate proxy always exposes the id without triggering lazy load
-        val ownerId = account.owner.id ?: return text
-
         var result = text
         for (match in meliLinkPattern.findAll(text)) {
             val meliUrl = match.value
@@ -238,10 +230,13 @@ class MercadoLivreAccountUseCase(
 
                 // Attribution is done purely through the matt_word / matt_tool query params of the
                 // logged-in user. ML has no public API to mint affiliate links.
+                //
+                // The full product URL is posted as-is (not shortened): a click from WhatsApp is a
+                // direct navigation and opens the product. Going through our shortener's redirect
+                // triggers Mercado Livre's anti-cloaking gate ("acesse sua conta") instead.
                 val affiliateUrl = appendAffiliateParams(baseProductUrl, mattWord, mattTool)
-                val shortUrl = shortenWithCache(ownerId, affiliateUrl)
-                result = result.replace(meliUrl, shortUrl)
-                log.info("Substituted affiliate link: $meliUrl → $shortUrl (matt_word=$mattWord)")
+                result = result.replace(meliUrl, affiliateUrl)
+                log.info("Substituted affiliate link: $meliUrl → $affiliateUrl (matt_word=$mattWord)")
             } catch (e: Exception) {
                 log.error("Error processing link $meliUrl: ${e.message}", e)
             }
@@ -271,30 +266,6 @@ class MercadoLivreAccountUseCase(
             .split("&")
             .filter { it.isNotBlank() && it.substringBefore('=') !in affiliateParamKeys }
         return if (kept.isEmpty()) path else "$path?${kept.joinToString("&")}"
-    }
-
-    private fun shortenWithCache(ownerId: UUID, affiliateUrl: String): String {
-        val cacheKey = "ml:shorturl:${sha256(affiliateUrl)}"
-        val cached = redisTemplate.opsForValue().get(cacheKey)
-        if (cached != null) return cached
-
-        val response = shortLinkUseCase.create(ownerId, CreateShortLinkRequest(targetUrl = affiliateUrl))
-        val shortUrl = response.shortUrl
-
-        // Only cache in Redis after the outer transaction commits.
-        // If the transaction rolls back, the short_link row is gone from the DB but
-        // Redis would hold a stale URL for 30 days, causing every click to 404.
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
-                override fun afterCommit() {
-                    redisTemplate.opsForValue().set(cacheKey, shortUrl, 30, TimeUnit.DAYS)
-                }
-            })
-        } else {
-            redisTemplate.opsForValue().set(cacheKey, shortUrl, 30, TimeUnit.DAYS)
-        }
-
-        return shortUrl
     }
 
     // Fetches HTML of a social profile page to extract the shared product's full permalink.
