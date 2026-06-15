@@ -49,6 +49,9 @@ class ShortLinkController(private val shortLinkUseCase: ShortLinkUseCase) {
     @GetMapping("/s/{code}")
     fun redirect(@PathVariable code: String, response: HttpServletResponse) {
         val targetUrl = shortLinkUseCase.resolve(code)
+        // Suppress the Referer so the Mercado Livre product opens as a direct navigation.
+        // With an external referer, ML shows an "acesse sua conta" gate instead of the product.
+        response.setHeader("Referrer-Policy", "no-referrer")
         response.status = HttpServletResponse.SC_FOUND
         response.setHeader("Location", targetUrl)
     }

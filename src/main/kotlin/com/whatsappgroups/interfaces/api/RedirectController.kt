@@ -48,6 +48,9 @@ class RedirectController(private val processRedirectUseCase: ProcessRedirectUseC
             )
         )
 
+        // Suppress the Referer so the destination opens as a direct navigation (avoids
+        // referer-based gates/anti-bot on the target, e.g. Mercado Livre's login wall).
+        response.setHeader("Referrer-Policy", "no-referrer")
         response.status = HttpStatus.FOUND.value()
         response.setHeader("Location", result.inviteLink)
     }
