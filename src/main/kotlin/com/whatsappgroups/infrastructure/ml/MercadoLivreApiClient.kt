@@ -2,6 +2,7 @@ package com.whatsappgroups.infrastructure.ml
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.whatsappgroups.application.dto.MlItemDetails
+import com.whatsappgroups.application.dto.MlProductDetails
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
@@ -79,6 +80,50 @@ class MercadoLivreApiClient(
             null
         } catch (e: Exception) {
             log.error("Error fetching item $itemId: ${e.message}", e)
+            null
+        }
+    }
+
+    // Catalog product (/products/{id}). Used when /items/{id} returns 403 (catalog products).
+    fun getCatalogProduct(productId: String, accessToken: String): MlProductDetails? {
+        return try {
+            webClient.get()
+                .uri("/products/{id}", productId)
+                .header("Authorization", "Bearer $accessToken")
+                .retrieve()
+                .bodyToMono<MlProductDetails>()
+                .block()
+        } catch (e: WebClientResponseException) {
+            log.warn("getCatalogProduct falhou [$productId]: ${e.statusCode}")
+            null
+        } catch (e: Exception) {
+            log.warn("getCatalogProduct falhou [$productId]: ${e.message}")
+            null
+        }
+    }
+
+    // Extracts the product title from a page's og:title meta tag (last-resort source when the
+    // items/products APIs are unavailable). The page fetch reuses the browser-like htmlClient.
+    fun extractTitleFromPage(url: String): String? {
+        return try {
+            val body = htmlClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono<String>()
+                .block() ?: return null
+            Regex("""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(body)?.groupValues?.get(1)
+                ?.let { raw ->
+                    raw.replace("&amp;", "&")
+                        .replace("&quot;", "\"")
+                        .replace("&#39;", "'")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .trim()
+                }
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            log.warn("extractTitleFromPage falhou para $url: ${e.message}")
             null
         }
     }
