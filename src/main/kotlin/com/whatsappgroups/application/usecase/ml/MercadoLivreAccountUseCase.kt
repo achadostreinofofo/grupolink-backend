@@ -221,23 +221,19 @@ class MercadoLivreAccountUseCase(
             try {
                 val resolvedUrl = resolveLinkWithCache(meliUrl) ?: continue
 
-                // When the short link resolves straight to a product page the MLB id is in the URL.
-                // For affiliate "social" pages the id has to be extracted from the rendered HTML.
-                val directMlbId = extractMlbId(resolvedUrl)
-                val mlbId = directMlbId
-                    ?: if (resolvedUrl.contains("/social/")) extractMlbIdFromSocialWithCache(resolvedUrl) else null
-                if (mlbId == null) {
-                    log.warn("Nenhum MLB ID encontrado em $resolvedUrl — link mantido sem alteração")
-                    continue
-                }
-
-                // Product URL: reuse the resolved URL when it already points to the product;
-                // for social pages build the canonical catalog URL from the MLB id. We don't call
-                // the items API here — it returns 403 for catalog products and the /p/ URL works.
-                val baseProductUrl = if (directMlbId != null && !resolvedUrl.contains("/social/")) {
+                // Determine the product URL. When the short link resolves straight to a product page
+                // the URL already contains the MLB id and can be reused. For affiliate "social" pages
+                // we extract the shared product's full canonical permalink from the rendered HTML —
+                // the bare /p/{id} URL doesn't always resolve and can bounce to the ML home page.
+                val baseProductUrl: String? = if (extractMlbId(resolvedUrl) != null && !resolvedUrl.contains("/social/")) {
                     resolvedUrl
-                } else {
-                    "https://www.mercadolivre.com.br/p/$mlbId"
+                } else if (resolvedUrl.contains("/social/")) {
+                    extractSharedProductUrlWithCache(resolvedUrl)
+                } else null
+
+                if (baseProductUrl == null) {
+                    log.warn("Nenhum produto encontrado em $resolvedUrl — link mantido sem alteração")
+                    continue
                 }
 
                 // Attribution is done purely through the matt_word / matt_tool query params of the
@@ -301,24 +297,25 @@ class MercadoLivreAccountUseCase(
         return shortUrl
     }
 
-    // Fetches HTML of a social profile page to extract the shared product's MLB ID.
+    // Fetches HTML of a social profile page to extract the shared product's full permalink.
     // Positive results are cached 24h (same social URL → same product). Negative results use a
     // short TTL so a transient failure (e.g. a timeout) does not poison the cache for a full day.
-    // The "v2" key namespace also invalidates entries written by older, buggy versions.
-    private fun extractMlbIdFromSocialWithCache(socialUrl: String): String? {
-        val cacheKey = "ml:social-mlbid:v2:${sha256(socialUrl)}"
+    // The "v3" key namespace also invalidates entries written by older versions (which cached the
+    // bare /p/{id} URL or the MLB id).
+    private fun extractSharedProductUrlWithCache(socialUrl: String): String? {
+        val cacheKey = "ml:social-product-url:v3:${sha256(socialUrl)}"
         val cached = redisTemplate.opsForValue().get(cacheKey)
         if (cached != null) {
             return cached.takeIf { it.isNotBlank() }
         }
-        val mlbId = mlApiClient.extractMlbIdFromPageHtml(socialUrl)
-        if (mlbId != null) {
-            redisTemplate.opsForValue().set(cacheKey, mlbId, 24, TimeUnit.HOURS)
+        val productUrl = mlApiClient.extractSharedProductUrlFromPage(socialUrl)
+        if (productUrl != null) {
+            redisTemplate.opsForValue().set(cacheKey, productUrl, 24, TimeUnit.HOURS)
         } else {
             redisTemplate.opsForValue().set(cacheKey, "", 10, TimeUnit.MINUTES)
         }
-        log.info("MLB ID extraído do HTML de $socialUrl → $mlbId")
-        return mlbId
+        log.info("Produto compartilhado extraído de $socialUrl → $productUrl")
+        return productUrl
     }
 
     // Extracts MLB item ID from any ML URL (e.g. MLB-2018088093 or MLB27844396).

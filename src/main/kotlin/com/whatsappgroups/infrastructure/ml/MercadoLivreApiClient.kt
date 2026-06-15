@@ -127,6 +127,43 @@ class MercadoLivreApiClient(
         }
     }
 
+    // Fetches a social page and returns the shared product's full canonical URL (permalink with
+    // slug, e.g. .../beta-alanina.../p/MLBxxxx). The bare /p/{id} URL doesn't always resolve to the
+    // product page (ML may bounce it to the home page), so the real permalink is preferred.
+    fun extractSharedProductUrlFromPage(url: String): String? {
+        return try {
+            val body = htmlClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono<String>()
+                .block() ?: return null
+            parseSharedProductUrlFromHtml(body, url)
+        } catch (e: Exception) {
+            log.warn("extractSharedProductUrlFromPage falhou para $url: ${e.message}")
+            null
+        }
+    }
+
+    // Resolves the shared MLB id and then finds its full permalink in the page body.
+    // Falls back to the bare catalog URL when the permalink can't be located.
+    internal fun parseSharedProductUrlFromHtml(body: String, url: String = ""): String? {
+        val mlbId = parseSharedMlbIdFromHtml(body, url) ?: return null
+        val permalink = Regex(
+            """https?://[a-z0-9.\-]*mercadolivre\.com\.br/[^\s"'<>]*?/p/$mlbId\b""",
+            RegexOption.IGNORE_CASE
+        ).find(body)?.value
+            ?.substringBefore('?')
+            ?.substringBefore('#')
+            ?.replace("&amp;", "&")
+
+        if (permalink != null) {
+            log.info("Permalink do produto compartilhado: $permalink (de $url)")
+            return permalink
+        }
+        log.info("Permalink não localizado no HTML; usando /p/$mlbId (de $url)")
+        return "https://www.mercadolivre.com.br/p/$mlbId"
+    }
+
     // Parses the shared product's MLB id from a social/profile page HTML body.
     // Priority: "item_id" (the shared product) → meta-refresh/window.location/canonical/og:url →
     // first MLB in the body (last-resort fallback). Internal so it can be unit-tested without HTTP.
