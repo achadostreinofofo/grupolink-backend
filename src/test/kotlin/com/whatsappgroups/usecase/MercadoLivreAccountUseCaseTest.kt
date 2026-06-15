@@ -1,7 +1,6 @@
 @file:Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
 package com.whatsappgroups.usecase
 
-import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.application.usecase.shortlink.CreateShortLinkRequest
 import com.whatsappgroups.application.usecase.shortlink.ShortLinkResponse
@@ -301,14 +300,12 @@ class MercadoLivreAccountUseCaseTest {
     }
 
     @Test
-    fun `resolveAndReplaceLinks builds affiliate link for social page via items permalink`() {
+    fun `resolveAndReplaceLinks builds affiliate link for social page from the shared MLB id`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
         whenever(valueOps.get(any())).thenReturn(null)
         whenever(mlApiClient.resolveShortLink("https://meli.la/social"))
             .thenReturn("https://www.mercadolivre.com.br/social/sharer?matt_word=sharer&matt_tool=999&ref=enc")
         whenever(mlApiClient.extractMlbIdFromPageHtml(any())).thenReturn("MLB9999999")
-        whenever(mlApiClient.getItem("MLB9999999", "test-access-token"))
-            .thenReturn(itemDetails("https://www.mercadolivre.com.br/produto-x/p/MLB9999999"))
 
         val requestCaptor = argumentCaptor<CreateShortLinkRequest>()
         whenever(shortLinkUseCase.create(eq(userId), requestCaptor.capture()))
@@ -317,8 +314,11 @@ class MercadoLivreAccountUseCaseTest {
         val result = useCase.resolveAndReplaceLinks("https://meli.la/social", account)
 
         assertThat(result).isEqualTo("https://redirectgrupo.com.br/soc123")
+        // Catalog product URL built from the MLB id + the logged-in user's affiliate params
         assertThat(requestCaptor.firstValue.targetUrl)
-            .isEqualTo("https://www.mercadolivre.com.br/produto-x/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805")
+            .isEqualTo("https://www.mercadolivre.com.br/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805")
+        // The items API is not used for building affiliate links (it 403s for catalog products)
+        verify(mlApiClient, never()).getItem(any(), any())
     }
 
     @Test
@@ -337,11 +337,6 @@ class MercadoLivreAccountUseCaseTest {
         id = "uuid-1", code = shortUrl.substringAfterLast('/'),
         shortUrl = shortUrl, targetUrl = "ignored",
         title = null, clicks = 0, active = true, expiresAt = null, createdAt = "2024-01-01T00:00:00"
-    )
-
-    private fun itemDetails(permalink: String) = MlItemDetails(
-        id = "MLB9999999", title = "Produto", permalink = permalink, thumbnail = null,
-        price = 10.0, originalPrice = null, currencyId = "BRL", condition = "new", availableQuantity = 1
     )
 
     private fun user() = User(id = userId, email = "u@t.com", passwordHash = "h", name = "U")
