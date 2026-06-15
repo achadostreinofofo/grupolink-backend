@@ -46,4 +46,30 @@ class MercadoLivreApiClientTest {
     fun `returns null when no MLB id is present`() {
         assertThat(client.parseSharedMlbIdFromHtml("<html><body>sem produto</body></html>")).isNull()
     }
+
+    @Test
+    fun `parseSharedProductUrlFromHtml returns the full permalink matching the shared item`() {
+        val html = """
+            <html><body>
+            <a href="https://www.mercadolivre.com.br/outro-produto/p/MLB111?reco_item_pos=1">reco</a>
+            <script>{"item_id":"MLB20302850"}</script>
+            <a href="https://www.mercadolivre.com.br/beta-alanina-250g-growth/p/MLB20302850?matt_event_ts=1&amp;source=x#polycard">compartilhado</a>
+            </body></html>
+        """.trimIndent()
+
+        assertThat(client.parseSharedProductUrlFromHtml(html))
+            .isEqualTo("https://www.mercadolivre.com.br/beta-alanina-250g-growth/p/MLB20302850")
+    }
+
+    @Test
+    fun `parseSharedProductUrlFromHtml falls back to bare catalog URL when permalink is absent`() {
+        val html = """<html><body><script>{"item_id":"MLB777"}</script></body></html>"""
+        assertThat(client.parseSharedProductUrlFromHtml(html))
+            .isEqualTo("https://www.mercadolivre.com.br/p/MLB777")
+    }
+
+    @Test
+    fun `parseSharedProductUrlFromHtml returns null when there is no shared item`() {
+        assertThat(client.parseSharedProductUrlFromHtml("<html><body>nada</body></html>")).isNull()
+    }
 }

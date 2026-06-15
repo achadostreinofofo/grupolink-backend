@@ -300,12 +300,14 @@ class MercadoLivreAccountUseCaseTest {
     }
 
     @Test
-    fun `resolveAndReplaceLinks builds affiliate link for social page from the shared MLB id`() {
+    fun `resolveAndReplaceLinks builds affiliate link for social page from the shared product permalink`() {
         val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
         whenever(valueOps.get(any())).thenReturn(null)
         whenever(mlApiClient.resolveShortLink("https://meli.la/social"))
             .thenReturn("https://www.mercadolivre.com.br/social/sharer?matt_word=sharer&matt_tool=999&ref=enc")
-        whenever(mlApiClient.extractMlbIdFromPageHtml(any())).thenReturn("MLB9999999")
+        // The full canonical permalink is extracted from the social page HTML
+        whenever(mlApiClient.extractSharedProductUrlFromPage(any()))
+            .thenReturn("https://www.mercadolivre.com.br/beta-alanina-250g/p/MLB9999999")
 
         val requestCaptor = argumentCaptor<CreateShortLinkRequest>()
         whenever(shortLinkUseCase.create(eq(userId), requestCaptor.capture()))
@@ -314,11 +316,24 @@ class MercadoLivreAccountUseCaseTest {
         val result = useCase.resolveAndReplaceLinks("https://meli.la/social", account)
 
         assertThat(result).isEqualTo("https://redirectgrupo.com.br/soc123")
-        // Catalog product URL built from the MLB id + the logged-in user's affiliate params
+        // The real product permalink (with slug) is used + the logged-in user's affiliate params
         assertThat(requestCaptor.firstValue.targetUrl)
-            .isEqualTo("https://www.mercadolivre.com.br/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805")
-        // The items API is not used for building affiliate links (it 403s for catalog products)
+            .isEqualTo("https://www.mercadolivre.com.br/beta-alanina-250g/p/MLB9999999?matt_word=grupo_colossal_ofc&matt_tool=57009805")
         verify(mlApiClient, never()).getItem(any(), any())
+    }
+
+    @Test
+    fun `resolveAndReplaceLinks keeps original link when social page yields no product`() {
+        val account = mlAccount(user(), mattWord = "grupo_colossal_ofc", mattTool = "57009805")
+        whenever(valueOps.get(any())).thenReturn(null)
+        whenever(mlApiClient.resolveShortLink("https://meli.la/social"))
+            .thenReturn("https://www.mercadolivre.com.br/social/sharer?ref=enc")
+        whenever(mlApiClient.extractSharedProductUrlFromPage(any())).thenReturn(null)
+
+        val result = useCase.resolveAndReplaceLinks("https://meli.la/social", account)
+
+        assertThat(result).isEqualTo("https://meli.la/social")
+        verify(shortLinkUseCase, never()).create(any(), any())
     }
 
     @Test
