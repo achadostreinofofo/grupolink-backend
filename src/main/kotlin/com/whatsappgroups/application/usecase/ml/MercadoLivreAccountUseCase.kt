@@ -231,13 +231,13 @@ class MercadoLivreAccountUseCase(
                     continue
                 }
 
-                // Canonical product URL: reuse the resolved URL when it already points to the product,
-                // otherwise look up the permalink via the items API (falling back to a built URL).
+                // Product URL: reuse the resolved URL when it already points to the product;
+                // for social pages build the canonical catalog URL from the MLB id. We don't call
+                // the items API here — it returns 403 for catalog products and the /p/ URL works.
                 val baseProductUrl = if (directMlbId != null && !resolvedUrl.contains("/social/")) {
                     resolvedUrl
                 } else {
-                    resolvePermalinkWithCache(mlbId, account.accessToken)
-                        ?: "https://www.mercadolivre.com.br/p/$mlbId"
+                    "https://www.mercadolivre.com.br/p/$mlbId"
                 }
 
                 // Attribution is done purely through the matt_word / matt_tool query params of the
@@ -277,18 +277,6 @@ class MercadoLivreAccountUseCase(
         return if (kept.isEmpty()) path else "$path?${kept.joinToString("&")}"
     }
 
-    // Looks up the canonical product permalink and caches it per product for 7 days.
-    private fun resolvePermalinkWithCache(mlbId: String, accessToken: String): String? {
-        val cacheKey = "ml:permalink:$mlbId"
-        val cached = redisTemplate.opsForValue().get(cacheKey)
-        if (cached != null) return cached.takeIf { it.isNotBlank() }
-
-        val permalink = mlApiClient.getItem(mlbId, accessToken)?.permalink
-        redisTemplate.opsForValue().set(cacheKey, permalink ?: "", 7, TimeUnit.DAYS)
-        if (permalink == null) log.warn("Items API não retornou permalink para $mlbId")
-        return permalink
-    }
-
     private fun shortenWithCache(ownerId: UUID, affiliateUrl: String): String {
         val cacheKey = "ml:shorturl:${sha256(affiliateUrl)}"
         val cached = redisTemplate.opsForValue().get(cacheKey)
@@ -313,16 +301,22 @@ class MercadoLivreAccountUseCase(
         return shortUrl
     }
 
-    // Fetches HTML of a social profile page to extract the featured product's MLB ID.
-    // Cached for 24 hours since the same social URL always points to the same product.
+    // Fetches HTML of a social profile page to extract the shared product's MLB ID.
+    // Positive results are cached 24h (same social URL → same product). Negative results use a
+    // short TTL so a transient failure (e.g. a timeout) does not poison the cache for a full day.
+    // The "v2" key namespace also invalidates entries written by older, buggy versions.
     private fun extractMlbIdFromSocialWithCache(socialUrl: String): String? {
-        val cacheKey = "ml:social-mlbid:${sha256(socialUrl)}"
+        val cacheKey = "ml:social-mlbid:v2:${sha256(socialUrl)}"
         val cached = redisTemplate.opsForValue().get(cacheKey)
         if (cached != null) {
             return cached.takeIf { it.isNotBlank() }
         }
         val mlbId = mlApiClient.extractMlbIdFromPageHtml(socialUrl)
-        redisTemplate.opsForValue().set(cacheKey, mlbId ?: "", 24, TimeUnit.HOURS)
+        if (mlbId != null) {
+            redisTemplate.opsForValue().set(cacheKey, mlbId, 24, TimeUnit.HOURS)
+        } else {
+            redisTemplate.opsForValue().set(cacheKey, "", 10, TimeUnit.MINUTES)
+        }
         log.info("MLB ID extraído do HTML de $socialUrl → $mlbId")
         return mlbId
     }
