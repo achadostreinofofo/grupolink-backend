@@ -68,7 +68,8 @@ class GenerateMessageFromLinkUseCaseTest {
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123-camiseta"))
 
-        assertThat(res.content).isEqualTo("Texto gerado 🔥")
+        assertThat(res.content).startsWith("Texto gerado 🔥")
+        assertThat(res.content).contains("https://produto.mercadolivre.com.br/MLB-123-camiseta")
         verify(mlApiClient, never()).getCatalogProduct(any(), any())
         verify(geminiClient).generateText(argThat { contains("Camiseta") && contains("49,90") })
     }
@@ -82,7 +83,8 @@ class GenerateMessageFromLinkUseCaseTest {
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/creatina/p/MLB123"))
 
-        assertThat(res.content).isEqualTo("Texto gerado 🔥")
+        assertThat(res.content).startsWith("Texto gerado 🔥")
+        assertThat(res.content).contains("https://www.mercadolivre.com.br/creatina/p/MLB123")
         verify(geminiClient).generateText(argThat { contains("Creatina 300g") && contains("51,47") })
     }
 
@@ -95,7 +97,8 @@ class GenerateMessageFromLinkUseCaseTest {
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
 
-        assertThat(res.content).isEqualTo("Texto gerado 🔥")
+        assertThat(res.content).startsWith("Texto gerado 🔥")
+        assertThat(res.content).contains("https://www.mercadolivre.com.br/p/MLB123")
         // Prompt has the title but no "Preço" line
         verify(geminiClient).generateText(argThat { contains("Produto Sem Preço") && !contains("Preço:") })
     }
