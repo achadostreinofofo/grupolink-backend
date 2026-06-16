@@ -7,6 +7,7 @@ import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
 import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.domain.repository.WhatsappWebSessionRepository
+import com.whatsappgroups.infrastructure.config.OwnerAccount
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -37,6 +38,16 @@ class AutoCreateGroupUseCase(
             .isNotEmpty()
 
         if (!allAboveThreshold || alreadyCreating) return
+
+        val maxGroups = if (OwnerAccount.isOwner(structure.owner.email)) Int.MAX_VALUE
+                        else structure.owner.plan.maxGroupsPerStructure
+        if (activeGroups.size >= maxGroups) {
+            log.info(
+                "Estrutura '${structure.slug}': limite de $maxGroups grupos atingido " +
+                "(plano ${structure.owner.plan.name}). Nenhum grupo novo será criado."
+            )
+            return
+        }
 
         val nextOrder = (activeGroups.maxOfOrNull { it.sortOrder } ?: 0) + 1
         val groupName = "${structure.name} #${nextOrder + 1}"
