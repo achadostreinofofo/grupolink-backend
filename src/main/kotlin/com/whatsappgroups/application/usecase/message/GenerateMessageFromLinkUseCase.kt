@@ -53,13 +53,14 @@ class GenerateMessageFromLinkUseCase(
             originalPrice = item.originalPrice
         }
 
-        // /sale_price retorna regular_amount calculado de múltiplas fontes (mais rico que
-        // original_price do /items, que só existe para promoções formais e está sendo depreciado).
-        if (price != null && originalPrice == null) {
+        // /sale_price retorna amount (preço atual) e regular_amount (preço riscado), calculados
+        // de múltiplas fontes pelo ML. Chamado sempre que preço ou desconto ainda está ausente:
+        // cobre tanto itens de vitrine social (price=null após /items) quanto itens sem promoção
+        // formal (originalPrice=null). Falha silenciosamente se o ID for de catálogo.
+        if (price == null || originalPrice == null) {
             mlApiClient.getItemSalePrice(mlbId, accessToken)?.let { sp ->
+                if (price == null && sp.amount != null) price = sp.amount
                 if (originalPrice == null && sp.regularAmount != null) originalPrice = sp.regularAmount
-                // sale_price.amount é mais preciso que items.price quando há promoção ativa
-                if (sp.amount != null) price = sp.amount
             }
         }
 
