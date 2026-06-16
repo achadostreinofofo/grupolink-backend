@@ -4,6 +4,7 @@ package com.whatsappgroups.usecase
 import com.whatsappgroups.application.dto.GenerateMessageRequest
 import com.whatsappgroups.application.dto.MlBuyBoxWinner
 import com.whatsappgroups.application.dto.MlItemDetails
+import com.whatsappgroups.application.dto.MlPageProductData
 import com.whatsappgroups.application.dto.MlProductDetails
 import com.whatsappgroups.application.usecase.message.GenerateMessageFromLinkUseCase
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
@@ -93,7 +94,8 @@ class GenerateMessageFromLinkUseCaseTest {
         setup()
         whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
         whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
-        whenever(mlApiClient.extractTitleFromPage(any())).thenReturn("Produto Sem Preço")
+        whenever(mlApiClient.extractProductDataFromPage(any()))
+            .thenReturn(MlPageProductData(title = "Produto Sem Preço"))
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
 
@@ -104,11 +106,33 @@ class GenerateMessageFromLinkUseCaseTest {
     }
 
     @Test
+    fun `extracts title, price and image from social page HTML when APIs fail`() {
+        setup()
+        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
+        whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
+        whenever(mlApiClient.extractMlbIdFromPageHtml(any())).thenReturn("MLB66637233")
+        whenever(mlApiClient.extractProductDataFromPage(any())).thenReturn(
+            MlPageProductData(
+                title = "Creatina Monohidratada 500g",
+                price = 69.9,
+                originalPrice = 104.9,
+                imageUrl = "https://http2.mlstatic.com/img.webp"
+            )
+        )
+
+        val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/social/perfil"))
+
+        assertThat(res.content).startsWith("Texto gerado 🔥")
+        assertThat(res.imageUrl).isEqualTo("https://http2.mlstatic.com/img.webp")
+        verify(geminiClient).generateText(argThat { contains("Creatina Monohidratada 500g") && contains("69,90") && contains("104,90") })
+    }
+
+    @Test
     fun `throws when no product info can be resolved`() {
         setup()
         whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
         whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
-        whenever(mlApiClient.extractTitleFromPage(any())).thenReturn(null)
+        whenever(mlApiClient.extractProductDataFromPage(any())).thenReturn(null)
 
         assertThatThrownBy {
             useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))

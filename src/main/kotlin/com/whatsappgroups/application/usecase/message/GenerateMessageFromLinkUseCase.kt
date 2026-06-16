@@ -74,8 +74,16 @@ class GenerateMessageFromLinkUseCase(
             }
         }
 
-        if (title == null) {
-            title = mlApiClient.extractTitleFromPage(resolvedUrl)
+        // Último recurso (e única fonte para vitrines sociais): extrai título, preço, preço
+        // riscado e imagem direto do HTML embutido. As APIs acima não resolvem o product_id de
+        // afiliado das páginas /social/, mas a página traz todos esses dados.
+        if (title == null || price == null || imageUrl == null) {
+            mlApiClient.extractProductDataFromPage(resolvedUrl)?.let { page ->
+                if (title == null) title = page.title
+                if (price == null) price = page.price
+                if (originalPrice == null) originalPrice = page.originalPrice
+                if (imageUrl == null) imageUrl = page.imageUrl
+            }
         }
 
         val finalTitle = title?.takeIf { it.isNotBlank() }
