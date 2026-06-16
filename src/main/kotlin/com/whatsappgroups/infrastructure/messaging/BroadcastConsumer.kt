@@ -44,11 +44,12 @@ class BroadcastConsumer(
         broadcast.executedAt = LocalDateTime.now()
         broadcastRepository.save(broadcast)
 
-        // Find authenticated WhatsApp Web session for this user
-        val ownerRef = sessionRepository.findAll()
-            .firstOrNull { it.owner.id == userId && it.status == WebSessionStatus.AUTHENTICATED }
+        // Todas as contas (sessões) autenticadas do usuário — usadas em rodízio (anti-ban)
+        val userSessions = sessionRepository.findAll()
+            .filter { it.owner.id == userId && it.status == WebSessionStatus.AUTHENTICATED }
+            .sortedBy { it.createdAt }
 
-        if (ownerRef == null) {
+        if (userSessions.isEmpty()) {
             log.warn("No authenticated WhatsApp Web session for user $userId, broadcast $broadcastId failed")
             broadcast.status = BroadcastStatus.FAILED
             broadcast.errorMessage = "Nenhuma sessão WhatsApp Web autenticada encontrada"
@@ -56,35 +57,37 @@ class BroadcastConsumer(
             return
         }
 
-        val sessionId = ownerRef.sessionId
-        log.info("Broadcast $broadcastId starting with session $sessionId for user $userId")
-
-        // Verifica se a sessão está de fato autenticada no whatsapp-service
-        val sessionStatus = webServiceClient.getSessionStatus(sessionId)
-        when (sessionStatus.status) {
-            "authenticated" -> { /* ok, prossegue */ }
-            "waiting_scan"  -> {
-                log.warn("Broadcast $broadcastId — session $sessionId is reconnecting, will retry later")
-                broadcast.status       = BroadcastStatus.FAILED
-                broadcast.errorMessage = "Sessão WhatsApp reconectando. Aguarde alguns segundos e tente novamente."
-                broadcastRepository.save(broadcast)
-                return
-            }
-            else -> {
-                log.warn("Broadcast $broadcastId — session $sessionId not found in service, recreating")
-                webServiceClient.createSession(sessionId)
-                broadcast.status       = BroadcastStatus.FAILED
-                broadcast.errorMessage = "Sessão WhatsApp foi reiniciada. Aguarde 5 segundos e tente novamente."
-                broadcastRepository.save(broadcast)
-                return
-            }
+        // Mantém apenas as que estão de fato autenticadas no whatsapp-service
+        val sessions = userSessions.filter { webServiceClient.getSessionStatus(it.sessionId).status == "authenticated" }
+        if (sessions.isEmpty()) {
+            log.warn("Broadcast $broadcastId — nenhuma sessão pronta no serviço, recriando a principal e adiando")
+            webServiceClient.createSession(userSessions.first().sessionId)
+            broadcast.status       = BroadcastStatus.FAILED
+            broadcast.errorMessage = "Sessão WhatsApp reconectando. Aguarde alguns segundos e tente novamente."
+            broadcastRepository.save(broadcast)
+            return
         }
+
+        // Conta principal (fallback do rodízio, ex.: grupos legados onde só ela é membro)
+        val primarySessionId = sessions.first().sessionId
+        log.info("Broadcast $broadcastId — ${sessions.size} conta(s) para rodízio (user $userId)")
 
         val results = resultRepository.findAllByBroadcastId(broadcastId)
         log.info("Broadcast $broadcastId has ${results.size} group(s) to process")
 
         var successCount = 0
         var failCount = 0
+        var rrIndex = 0
+
+        fun sendVia(sid: String, gid: String): Boolean = try {
+            when (broadcast.messageType) {
+                BroadcastMessageType.TEXT  -> webServiceClient.sendTextMessage(sid, gid, broadcast.content)
+                BroadcastMessageType.IMAGE -> webServiceClient.sendImageMessage(sid, gid, broadcast.mediaUrl ?: "", broadcast.content)
+            }
+        } catch (e: Exception) {
+            log.error("Broadcast $broadcastId — erro enviando para $gid via $sid: ${e.message}")
+            false
+        }
 
         for (result in results) {
             val group = result.group
@@ -101,18 +104,15 @@ class BroadcastConsumer(
                 continue
             }
 
-            log.info("Broadcast $broadcastId → sending to group '${group.name}' ($whatsappGroupId)")
+            // Rodízio: cada grupo usa a próxima conta; se falhar, cai para a conta principal
+            val chosen = sessions[rrIndex % sessions.size].sessionId
+            rrIndex++
+            log.info("Broadcast $broadcastId → grupo '${group.name}' ($whatsappGroupId) via $chosen")
 
-            val sent = try {
-                when (broadcast.messageType) {
-                    BroadcastMessageType.TEXT  ->
-                        webServiceClient.sendTextMessage(sessionId, whatsappGroupId, broadcast.content)
-                    BroadcastMessageType.IMAGE ->
-                        webServiceClient.sendImageMessage(sessionId, whatsappGroupId, broadcast.mediaUrl ?: "", broadcast.content)
-                }
-            } catch (e: Exception) {
-                log.error("Broadcast $broadcastId — error sending to group ${group.id}: ${e.message}")
-                false
+            var sent = sendVia(chosen, whatsappGroupId)
+            if (!sent && chosen != primarySessionId) {
+                log.warn("Broadcast $broadcastId — rodízio falhou em $chosen, tentando conta principal $primarySessionId")
+                sent = sendVia(primarySessionId, whatsappGroupId)
             }
 
             if (sent) {
