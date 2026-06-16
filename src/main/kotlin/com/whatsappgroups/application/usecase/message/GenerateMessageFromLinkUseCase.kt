@@ -46,20 +46,23 @@ class GenerateMessageFromLinkUseCase(
         var title: String? = null
         var price: Double? = null
         var originalPrice: Double? = null
+        var imageUrl: String? = null
 
         mlApiClient.getItem(mlbId, accessToken)?.let { item ->
             title = item.title.takeIf { it.isNotBlank() }
             price = item.price
             originalPrice = item.originalPrice
+            imageUrl = item.thumbnail
         }
 
-        // /sale_price retorna regular_amount calculado de múltiplas fontes (mais rico que
-        // original_price do /items, que só existe para promoções formais e está sendo depreciado).
-        if (price != null && originalPrice == null) {
+        // /sale_price retorna amount (preço atual) e regular_amount (preço riscado), calculados
+        // de múltiplas fontes pelo ML. Chamado sempre que preço ou desconto ainda está ausente:
+        // cobre tanto itens de vitrine social (price=null após /items) quanto itens sem promoção
+        // formal (originalPrice=null). Falha silenciosamente se o ID for de catálogo.
+        if (price == null || originalPrice == null) {
             mlApiClient.getItemSalePrice(mlbId, accessToken)?.let { sp ->
+                if (price == null && sp.amount != null) price = sp.amount
                 if (originalPrice == null && sp.regularAmount != null) originalPrice = sp.regularAmount
-                // sale_price.amount é mais preciso que items.price quando há promoção ativa
-                if (sp.amount != null) price = sp.amount
             }
         }
 
@@ -88,8 +91,10 @@ class GenerateMessageFromLinkUseCase(
         val content = geminiClient.generateText(prompt)
             ?: throw IllegalStateException("Não foi possível gerar o texto no momento. Tente novamente em alguns segundos.")
 
-        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"})")
-        return GenerateMessageResponse(content = content.trim())
+        val finalContent = "${content.trim()}\n\n${url}"
+
+        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"}, imageUrl=${imageUrl ?: "n/d"})")
+        return GenerateMessageResponse(content = finalContent, imageUrl = imageUrl)
     }
 
     private fun isMercadoLivreUrl(url: String): Boolean {
