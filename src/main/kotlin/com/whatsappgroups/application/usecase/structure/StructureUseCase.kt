@@ -9,6 +9,7 @@ import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.domain.repository.WhatsappWebSessionRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
 import com.whatsappgroups.domain.model.WebSessionStatus
+import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -23,6 +24,7 @@ class StructureUseCase(
     private val userRepository: UserRepository,
     private val sessionRepository: WhatsappWebSessionRepository,
     private val whatsappWebClient: WhatsappWebServiceClient,
+    private val connectedAccounts: ConnectedAccountsService,
     @Value("\${app.base-url}") private val baseUrl: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -158,6 +160,8 @@ class StructureUseCase(
                         inviteLink      = result.inviteLink
                         groupStatus     = GroupStatus.ACTIVE
                         log.info("WhatsApp group created: {} → {}", fullName, result.groupId)
+                        // Adiciona as demais contas conectadas do usuário ao grupo
+                        connectedAccounts.addOtherAccountsToGroup(structure.owner, session.sessionId, result.groupId)
                     } catch (e: Exception) {
                         log.error("createGroup error: ${e.message}")
                         throw IllegalStateException("Falha ao criar grupo no WhatsApp: ${e.message}")
@@ -259,6 +263,8 @@ class StructureUseCase(
             "Grupo importado: '${group.name}' (jid=${request.whatsappGroupId}, " +
             "maxMembers=${structure.maxMembersPerGroup}, fillThreshold=${structure.fillThreshold})"
         )
+        // Adiciona as demais contas conectadas do usuário ao grupo importado
+        connectedAccounts.addOtherAccountsToGroup(structure.owner, session.sessionId, request.whatsappGroupId)
         return group.toResponse()
     }
 
