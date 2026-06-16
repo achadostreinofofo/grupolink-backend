@@ -46,6 +46,17 @@ class WhatsappWebUseCase(
                 sessionRepository.delete(stale)
             }
 
+        // Limite de celulares conectados por plano (Smart 2 / Diamond 4 / Black 10).
+        val maxPhones = owner.plan.maxConnectedPhones
+        val connectedCount = sessionRepository.findAllByOwner(owner)
+            .count { it.status == WebSessionStatus.AUTHENTICATED }
+        if (connectedCount >= maxPhones) {
+            throw IllegalStateException(
+                "Seu plano (${owner.plan.name}) permite no máximo $maxPhones celular(es) conectado(s). " +
+                "Desconecte um celular para adicionar outro ou faça upgrade de plano."
+            )
+        }
+
         // Cria uma nova sessão (caminho usado quando force=true ou não há sessão autenticada)
         val sessionId = UUID.randomUUID().toString()
         val session = sessionRepository.save(
