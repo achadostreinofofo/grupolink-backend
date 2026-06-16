@@ -2,6 +2,7 @@ package com.whatsappgroups.infrastructure.ml
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.whatsappgroups.application.dto.MlItemDetails
+import com.whatsappgroups.application.dto.MlPageProductData
 import com.whatsappgroups.application.dto.MlProductDetails
 import com.whatsappgroups.application.dto.MlSalePriceResponse
 import org.slf4j.LoggerFactory
@@ -132,22 +133,65 @@ class MercadoLivreApiClient(
                 .retrieve()
                 .bodyToMono<String>()
                 .block() ?: return null
-            Regex("""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                .find(body)?.groupValues?.get(1)
-                ?.let { raw ->
-                    raw.replace("&amp;", "&")
-                        .replace("&quot;", "\"")
-                        .replace("&#39;", "'")
-                        .replace("&lt;", "<")
-                        .replace("&gt;", ">")
-                        .trim()
-                }
-                ?.takeIf { it.isNotBlank() }
+            extractOgTitleFromHtml(body)
         } catch (e: Exception) {
             log.warn("extractTitleFromPage falhou para $url: ${e.message}")
             null
         }
     }
+
+    // Extracts title, price, original price and main image directly from a page's HTML, in a
+    // single fetch. Built for affiliate "social" pages (/social/...), whose shared product id is
+    // a product_id that /items and /products reject — but the page embeds everything we need:
+    // og:title/og:image and the shared product's price block ("type":"price" → current/previous).
+    fun extractProductDataFromPage(url: String): MlPageProductData? {
+        return try {
+            val body = htmlClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono<String>()
+                .block() ?: return null
+            parseProductDataFromHtml(body)
+        } catch (e: Exception) {
+            log.warn("extractProductDataFromPage falhou para $url: ${e.message}")
+            null
+        }
+    }
+
+    // Internal so it can be unit-tested without HTTP. The shared product is the FIRST "type":"price"
+    // component on the page (the header block); restricting the current/previous lookup to that
+    // block keeps both prices from the same product, even though the page lists many others.
+    internal fun parseProductDataFromHtml(body: String): MlPageProductData {
+        val title = extractOgTitleFromHtml(body)
+
+        val imageUrl = Regex("""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .find(body)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+
+        val priceBlock = body.indexOf("\"type\":\"price\"")
+            .takeIf { it >= 0 }
+            ?.let { body.substring(it, minOf(it + 600, body.length)) }
+        val price = priceBlock?.let {
+            Regex(""""current_price"\s*:\s*\{\s*"value"\s*:\s*([0-9.]+)""").find(it)?.groupValues?.get(1)?.toDoubleOrNull()
+        }
+        val originalPrice = priceBlock?.let {
+            Regex(""""previous_price"\s*:\s*\{\s*"value"\s*:\s*([0-9.]+)""").find(it)?.groupValues?.get(1)?.toDoubleOrNull()
+        }
+
+        return MlPageProductData(title = title, price = price, originalPrice = originalPrice, imageUrl = imageUrl)
+    }
+
+    private fun extractOgTitleFromHtml(body: String): String? =
+        Regex("""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            .find(body)?.groupValues?.get(1)
+            ?.let { raw ->
+                raw.replace("&amp;", "&")
+                    .replace("&quot;", "\"")
+                    .replace("&#39;", "'")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .trim()
+            }
+            ?.takeIf { it.isNotBlank() }
 
     fun resolveShortLink(meliUrl: String): String {
         var current = meliUrl
