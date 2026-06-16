@@ -5,6 +5,7 @@ import com.whatsappgroups.application.dto.GenerateMessageResponse
 import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
 import com.whatsappgroups.infrastructure.ai.GeminiClient
 import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
+import com.whatsappgroups.infrastructure.storage.S3UploadService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -13,7 +14,8 @@ import java.util.UUID
 class GenerateMessageFromLinkUseCase(
     private val mlApiClient: MercadoLivreApiClient,
     private val geminiClient: GeminiClient,
-    private val mlAccountUseCase: MercadoLivreAccountUseCase
+    private val mlAccountUseCase: MercadoLivreAccountUseCase,
+    private val s3UploadService: S3UploadService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -101,8 +103,23 @@ class GenerateMessageFromLinkUseCase(
 
         val finalContent = "${content.trim()}\n\n${url}"
 
-        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"}, imageUrl=${imageUrl ?: "n/d"})")
-        return GenerateMessageResponse(content = finalContent, imageUrl = imageUrl)
+        // Persiste a imagem do ML no nosso S3, para que a mídia salva na mensagem seja idêntica a
+        // um upload manual (não dependa de URL externa no momento do envio). Se o download/upload
+        // falhar, cai para a URL original do ML (graceful degradation — a mensagem ainda tem imagem).
+        val finalImageUrl = imageUrl?.let { persistImageToS3(it, userId) ?: it }
+
+        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"}, imageUrl=${finalImageUrl ?: "n/d"})")
+        return GenerateMessageResponse(content = finalContent, imageUrl = finalImageUrl)
+    }
+
+    private fun persistImageToS3(imageUrl: String, userId: UUID): String? {
+        val (bytes, contentType) = mlApiClient.downloadImage(imageUrl) ?: return null
+        return try {
+            s3UploadService.uploadImageBytes(bytes, contentType, userId.toString())
+        } catch (e: Exception) {
+            log.warn("Falha ao subir imagem do produto para o S3 ($imageUrl): ${e.message}")
+            null
+        }
     }
 
     private fun isMercadoLivreUrl(url: String): Boolean {
