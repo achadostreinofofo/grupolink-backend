@@ -46,11 +46,13 @@ class GenerateMessageFromLinkUseCase(
         var title: String? = null
         var price: Double? = null
         var originalPrice: Double? = null
+        var imageUrl: String? = null
 
         mlApiClient.getItem(mlbId, accessToken)?.let { item ->
             title = item.title.takeIf { it.isNotBlank() }
             price = item.price
             originalPrice = item.originalPrice
+            imageUrl = item.thumbnail
         }
 
         // /sale_price retorna amount (preço atual) e regular_amount (preço riscado), calculados
@@ -89,8 +91,10 @@ class GenerateMessageFromLinkUseCase(
         val content = geminiClient.generateText(prompt)
             ?: throw IllegalStateException("Não foi possível gerar o texto no momento. Tente novamente em alguns segundos.")
 
-        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"})")
-        return GenerateMessageResponse(content = content.trim())
+        val finalContent = "${content.trim()}\n\n${url}"
+
+        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"}, imageUrl=${imageUrl ?: "n/d"})")
+        return GenerateMessageResponse(content = finalContent, imageUrl = imageUrl)
     }
 
     private fun isMercadoLivreUrl(url: String): Boolean {

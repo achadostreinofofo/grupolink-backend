@@ -64,5 +64,6 @@ data class GenerateMessageRequest(
 )
 
 data class GenerateMessageResponse(
-    val content: String
+    val content: String,
+    val imageUrl: String? = null
 )
