@@ -25,7 +25,8 @@ class MonitoredGroupUseCase(
     private val webServiceClient: WhatsappWebServiceClient,
     private val broadcastUseCase: BroadcastUseCase,
     private val mlAccountRepository: MercadoLivreAccountRepository,
-    private val mlAccountUseCase: MercadoLivreAccountUseCase
+    private val mlAccountUseCase: MercadoLivreAccountUseCase,
+    private val connectedAccounts: ConnectedAccountsService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -205,13 +206,21 @@ class MonitoredGroupUseCase(
                 log.warn("Nenhum grupo ativo com whatsappGroupId na estrutura $structureId")
                 return
             }
-            activeGroups.forEach { group ->
-                webServiceClient.sendImageBase64Message(
-                    sessionId        = sessionId,
+            // Rodízio de contas (anti-ban): cada grupo usa a próxima conta conectada;
+            // a sessão que capturou a mensagem é o fallback.
+            val rotation = connectedAccounts.authenticatedSessions(monitored.owner).map { it.sessionId }
+                .ifEmpty { listOf(sessionId) }
+            activeGroups.forEachIndexed { idx, group ->
+                val chosen = rotation[idx % rotation.size]
+                val ok = webServiceClient.sendImageBase64Message(
+                    sessionId        = chosen,
                     whatsappGroupId  = group.whatsappGroupId!!,
                     imageBase64      = payload.imageBase64,
                     caption          = finalContent
                 )
+                if (!ok && chosen != sessionId) {
+                    webServiceClient.sendImageBase64Message(sessionId, group.whatsappGroupId!!, payload.imageBase64, finalContent)
+                }
             }
         } else {
             // Texto: usa o broadcast queue normal

@@ -33,6 +33,7 @@ class MonitoredGroupUseCaseTest {
     @Mock private lateinit var broadcastUseCase: BroadcastUseCase
     @Mock private lateinit var mlAccountRepository: MercadoLivreAccountRepository
     @Mock private lateinit var mlAccountUseCase: MercadoLivreAccountUseCase
+    @Mock private lateinit var connectedAccounts: com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 
     private lateinit var useCase: MonitoredGroupUseCase
     private val userId = UUID.randomUUID()
@@ -44,7 +45,8 @@ class MonitoredGroupUseCaseTest {
     fun setUp() {
         useCase = MonitoredGroupUseCase(
             monitoredGroupRepository, webSessionRepository, structureRepository,
-            userRepository, webServiceClient, broadcastUseCase, mlAccountRepository, mlAccountUseCase)
+            userRepository, webServiceClient, broadcastUseCase, mlAccountRepository, mlAccountUseCase,
+            connectedAccounts)
     }
 
     @Test
