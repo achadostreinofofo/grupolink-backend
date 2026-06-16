@@ -44,4 +44,30 @@ class S3UploadService(
         log.info("Uploaded image: $url")
         return url
     }
+
+    // Faz upload de uma imagem já carregada em memória (ex.: baixada de uma URL externa).
+    // Usado para persistir no S3 a imagem principal de produtos do ML, de modo que a mídia
+    // salva na mensagem seja idêntica a um upload manual (não dependa de URL externa no envio).
+    fun uploadImageBytes(bytes: ByteArray, contentType: String, userId: String): String {
+        val ext = when {
+            contentType.contains("png")  -> "png"
+            contentType.contains("webp") -> "webp"
+            contentType.contains("gif")  -> "gif"
+            else                         -> "jpg"
+        }
+        val key  = "messages/$userId/${UUID.randomUUID()}.$ext"
+        val type = contentType.ifBlank { "image/jpeg" }
+
+        s3.putObject(
+            PutObjectRequest.builder()
+                .bucket(bucket).key(key).contentType(type).contentLength(bytes.size.toLong()).build(),
+            RequestBody.fromBytes(bytes)
+        )
+
+        val url = if (baseUrl.isNotBlank()) "$baseUrl/$key"
+                  else "https://$bucket.s3.$region.amazonaws.com/$key"
+
+        log.info("Uploaded image from bytes: $url")
+        return url
+    }
 }
