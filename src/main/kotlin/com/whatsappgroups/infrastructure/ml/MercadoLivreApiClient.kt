@@ -3,6 +3,7 @@ package com.whatsappgroups.infrastructure.ml
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.whatsappgroups.application.dto.MlItemDetails
 import com.whatsappgroups.application.dto.MlProductDetails
+import com.whatsappgroups.application.dto.MlSalePriceResponse
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
@@ -98,6 +99,26 @@ class MercadoLivreApiClient(
             null
         } catch (e: Exception) {
             log.warn("getCatalogProduct falhou [$productId]: ${e.message}")
+            null
+        }
+    }
+
+    // /items/{id}/sale_price — preço vencedor atual com regular_amount (preço riscado).
+    // Mais confiável que original_price do /items (calculado de múltiplas fontes pelo ML;
+    // os campos price/original_price do /items estão sendo depreciados).
+    fun getItemSalePrice(itemId: String, accessToken: String): MlSalePriceResponse? {
+        return try {
+            webClient.get()
+                .uri("/items/{id}/sale_price?context=channel_marketplace", itemId)
+                .header("Authorization", "Bearer $accessToken")
+                .retrieve()
+                .bodyToMono<MlSalePriceResponse>()
+                .block()
+        } catch (e: WebClientResponseException) {
+            log.warn("getItemSalePrice falhou [$itemId]: ${e.statusCode}")
+            null
+        } catch (e: Exception) {
+            log.warn("getItemSalePrice falhou [$itemId]: ${e.message}")
             null
         }
     }

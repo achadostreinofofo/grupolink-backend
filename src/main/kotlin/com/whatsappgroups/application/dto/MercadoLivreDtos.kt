@@ -50,6 +50,14 @@ data class MlBuyBoxWinner(
     @JsonProperty("original_price") val originalPrice: Double?
 )
 
+// /items/{id}/sale_price?context=channel_marketplace — preço vencedor atual.
+// regular_amount = preço riscado (calculado de múltiplas fontes pelo ML, mais rico que original_price do /items).
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MlSalePriceResponse(
+    val amount: Double?,
+    @JsonProperty("regular_amount") val regularAmount: Double?
+)
+
 data class GenerateMessageRequest(
     @field:NotBlank(message = "productUrl é obrigatório")
     val productUrl: String
