@@ -24,9 +24,9 @@ class MercadoPagoService(
     private val restClient = RestClient.create()
 
     val planPrices = mapOf(
-        "SMART"   to BigDecimal("128.00"),
-        "DIAMOND" to BigDecimal("290.00"),
-        "BLACK"   to BigDecimal("453.00")
+        "SMART"   to BigDecimal("98.00"),
+        "DIAMOND" to BigDecimal("179.00"),
+        "BLACK"   to BigDecimal("299.00")
     )
 
     fun createSubscription(planName: String, userEmail: String): Preapproval {
