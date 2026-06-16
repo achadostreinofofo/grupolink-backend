@@ -4,12 +4,12 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.util.UUID
 
-enum class Plan(val maxConnectedPhones: Int) {
-    FREE(1),
-    SMART(2),
-    DIAMOND(4),
-    BLACK(10),
-    MAXIMUS(Int.MAX_VALUE);
+enum class Plan(val maxConnectedPhones: Int, val maxScheduledMessagesPerMonth: Int) {
+    FREE(1, 5),
+    SMART(2, 80),
+    DIAMOND(4, 400),
+    BLACK(10, 1000),
+    MAXIMUS(Int.MAX_VALUE, Int.MAX_VALUE);
 }
 enum class UserStatus { PENDING_VERIFICATION, ACTIVE }
 

@@ -10,6 +10,7 @@ import com.whatsappgroups.domain.model.ScheduledMessage
 import com.whatsappgroups.domain.repository.ScheduledMessageRepository
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.UserRepository
+import com.whatsappgroups.infrastructure.config.OwnerAccount
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -25,7 +26,21 @@ class ScheduledMessageUseCase(
 
     @Transactional
     fun create(userId: UUID, request: CreateScheduledMessageRequest): ScheduledMessageResponse {
-        val owner = userRepository.getReferenceById(userId)
+        val owner = userRepository.findById(userId)
+            .orElseThrow { NoSuchElementException("Usuário não encontrado") }
+
+        val maxAllowed = if (OwnerAccount.isOwner(owner.email)) Int.MAX_VALUE
+                         else owner.plan.maxScheduledMessagesPerMonth
+        val now = LocalDateTime.now()
+        val monthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0)
+        val monthEnd = monthStart.plusMonths(1)
+        val countThisMonth = messageRepository.countByOwnerAndCreatedAtBetween(owner, monthStart, monthEnd)
+        if (countThisMonth >= maxAllowed) {
+            throw IllegalArgumentException(
+                "Seu plano ${owner.plan.name} permite no máximo $maxAllowed agendamento(s) por mês. " +
+                "Faça upgrade para aumentar seu limite."
+            )
+        }
 
         val structure = request.structureId?.let {
             structureRepository.findById(UUID.fromString(it))
