@@ -36,13 +36,7 @@ class StructureUseCase(
 
         val existing = structureRepository.findAllByOwner(owner).size
         val maxAllowed = if (com.whatsappgroups.infrastructure.config.OwnerAccount.isOwner(owner.email)) Int.MAX_VALUE
-        else when (owner.plan) {
-            com.whatsappgroups.domain.model.Plan.FREE    -> 1
-            com.whatsappgroups.domain.model.Plan.SMART   -> 1
-            com.whatsappgroups.domain.model.Plan.DIAMOND -> 4
-            com.whatsappgroups.domain.model.Plan.BLACK,
-            com.whatsappgroups.domain.model.Plan.MAXIMUS -> Int.MAX_VALUE
-        }
+                         else owner.plan.maxStructures
         if (existing >= maxAllowed) {
             throw IllegalArgumentException(
                 "Seu plano ${owner.plan.name} permite no máximo $maxAllowed estrutura(s). " +
