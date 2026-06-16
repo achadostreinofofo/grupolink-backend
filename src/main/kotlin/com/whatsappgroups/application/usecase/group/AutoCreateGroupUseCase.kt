@@ -5,6 +5,7 @@ import com.whatsappgroups.domain.model.WebSessionStatus
 import com.whatsappgroups.domain.model.WhatsappGroup
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.WhatsappGroupRepository
+import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.domain.repository.WhatsappWebSessionRepository
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
 import org.slf4j.LoggerFactory
@@ -16,7 +17,8 @@ class AutoCreateGroupUseCase(
     private val structureRepository: StructureRepository,
     private val groupRepository: WhatsappGroupRepository,
     private val sessionRepository: WhatsappWebSessionRepository,
-    private val whatsappClient: WhatsappWebServiceClient
+    private val whatsappClient: WhatsappWebServiceClient,
+    private val connectedAccounts: ConnectedAccountsService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -67,6 +69,8 @@ class AutoCreateGroupUseCase(
                     "Grupo '${newGroup.name}' criado no WhatsApp " +
                     "(jid=${result.groupId}, link=${result.inviteLink})"
                 )
+                // Adiciona as demais contas conectadas do usuário ao novo grupo
+                connectedAccounts.addOtherAccountsToGroup(structure.owner, session.sessionId, result.groupId)
             }.onFailure { e ->
                 log.error("Falha ao criar grupo no WhatsApp para '${structure.slug}': ${e.message}")
                 // Fallback: cria como CREATING para intervenção manual

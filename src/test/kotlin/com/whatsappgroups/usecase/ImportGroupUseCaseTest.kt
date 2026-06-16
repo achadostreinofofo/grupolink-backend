@@ -4,6 +4,7 @@ package com.whatsappgroups.usecase
 import com.whatsappgroups.application.dto.AddGroupRequest
 import com.whatsappgroups.application.dto.ImportGroupRequest
 import com.whatsappgroups.application.usecase.structure.StructureUseCase
+import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.domain.model.*
 import com.whatsappgroups.domain.repository.*
 import com.whatsappgroups.infrastructure.whatsapp.WebServiceGroupDetail
@@ -21,9 +22,10 @@ class ImportGroupUseCaseTest {
     private val userRepo       = mock<UserRepository>()
     private val sessionRepo    = mock<WhatsappWebSessionRepository>()
     private val whatsappClient = mock<WhatsappWebServiceClient>()
+    private val connectedAccounts = mock<ConnectedAccountsService>()
 
     private val useCase = StructureUseCase(
-        structureRepo, groupRepo, userRepo, sessionRepo, whatsappClient, "http://localhost:8080"
+        structureRepo, groupRepo, userRepo, sessionRepo, whatsappClient, connectedAccounts, "http://localhost:8080"
     )
 
     private val ownerId     = UUID.randomUUID()

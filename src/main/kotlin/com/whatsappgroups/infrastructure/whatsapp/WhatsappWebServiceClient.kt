@@ -201,6 +201,24 @@ class WhatsappWebServiceClient(
         null
     }
 
+    /**
+     * Adiciona participantes (números das contas do usuário) a um grupo existente.
+     * Best-effort: retorna false em caso de falha (ex.: sessão não admin), sem lançar.
+     */
+    fun addParticipants(sessionId: String, whatsappGroupId: String, phones: List<String>): Boolean = runCatching {
+        if (phones.isEmpty()) return true
+        client.post()
+            .uri { it.path("/groups/{groupId}/participants").build(whatsappGroupId) }
+            .bodyValue(mapOf("sessionId" to sessionId, "phones" to phones))
+            .retrieve()
+            .bodyToMono<Map<String, Any>>()
+            .block()
+        true
+    }.getOrElse {
+        log.warn("addParticipants falhou para grupo $whatsappGroupId via $sessionId: ${it.message}")
+        false
+    }
+
     fun sendTextMessage(sessionId: String, whatsappGroupId: String, text: String): Boolean = runCatching {
         client.post()
             .uri("/messages/text")
