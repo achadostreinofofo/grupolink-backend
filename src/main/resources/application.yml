@@ -58,7 +58,7 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET:mude-esse-secret-em-producao-use-256-bits-no-minimo}
-    expiration-ms: ${JWT_EXPIRATION_MS:3600000} # 1 hora
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 horas
   base-url: ${BASE_URL:http://localhost:8080}
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
