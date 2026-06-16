@@ -58,6 +58,17 @@ data class MlSalePriceResponse(
     @JsonProperty("regular_amount") val regularAmount: Double?
 )
 
+// Dados de produto extraídos diretamente do HTML de uma página do ML (og: tags + JSON embutido).
+// Usado como fallback para vitrines sociais (/social/...), onde o id compartilhado é um
+// product_id de afiliado que as APIs /items e /products não resolvem, mas a página traz
+// título, preço atual/riscado e imagem principal embutidos.
+data class MlPageProductData(
+    val title: String? = null,
+    val price: Double? = null,
+    val originalPrice: Double? = null,
+    val imageUrl: String? = null
+)
+
 data class GenerateMessageRequest(
     @field:NotBlank(message = "productUrl é obrigatório")
     val productUrl: String

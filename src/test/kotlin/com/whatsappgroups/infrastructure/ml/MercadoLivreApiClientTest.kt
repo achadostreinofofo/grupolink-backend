@@ -72,4 +72,34 @@ class MercadoLivreApiClientTest {
     fun `parseSharedProductUrlFromHtml returns null when there is no shared item`() {
         assertThat(client.parseSharedProductUrlFromHtml("<html><body>nada</body></html>")).isNull()
     }
+
+    @Test
+    fun `parseProductDataFromHtml extracts title, image and shared product price block`() {
+        // Mirrors a real /social page: og tags for the shared product, then a components array
+        // whose FIRST "type":"price" is the shared product (R$ 69,90, era R$ 104,90), followed by
+        // other listed products with different prices that must be ignored.
+        val html = """
+            <meta property="og:title" content="Creatina Monohidratada 500g Growth Supplements"/>
+            <meta property="og:image" content="https://http2.mlstatic.com/D_NQ_NP_602304-MLA.webp"/>
+            {"type":"title","title":{"text":"Creatina Monohidratada 500g"}},
+            {"type":"price","id":"price","column":1,"price":{"previous_price":{"value":104.9,"currency":"BRL"},"current_price":{"value":69.9,"currency":"BRL"},"discount_label":{"text":"33% OFF"}}},
+            {"type":"price","id":"price","column":1,"price":{"previous_price":{"value":34.9},"current_price":{"value":30.9}}}
+        """.trimIndent()
+
+        val data = client.parseProductDataFromHtml(html)
+
+        assertThat(data.title).isEqualTo("Creatina Monohidratada 500g Growth Supplements")
+        assertThat(data.imageUrl).isEqualTo("https://http2.mlstatic.com/D_NQ_NP_602304-MLA.webp")
+        assertThat(data.price).isEqualTo(69.9)
+        assertThat(data.originalPrice).isEqualTo(104.9)
+    }
+
+    @Test
+    fun `parseProductDataFromHtml returns nulls when page has no product data`() {
+        val data = client.parseProductDataFromHtml("<html><body>sem produto</body></html>")
+        assertThat(data.title).isNull()
+        assertThat(data.price).isNull()
+        assertThat(data.originalPrice).isNull()
+        assertThat(data.imageUrl).isNull()
+    }
 }
