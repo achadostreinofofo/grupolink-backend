@@ -10,7 +10,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 @Component
 class GeminiClient(
     @Value("\${app.gemini.api-key:}") private val apiKey: String,
-    @Value("\${app.gemini.model:gemini-2.0-flash}") private val model: String
+    @Value("\${app.gemini.model:gemini-2.5-flash}") private val model: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
