@@ -8,12 +8,12 @@ abstract class AbstractEmailService : EmailService {
     protected abstract fun send(to: String, subject: String, html: String, text: String, replyTo: String? = null)
 
     override fun sendVerificationEmail(toAddress: String, name: String, activationLink: String) {
-        val subject = "Ative sua conta no GrupoLink"
+        val subject = "Ative sua conta no Redirect Grupo"
         val html = emailLayout(
-            preheader = "Bem-vindo ao GrupoLink! Clique para ativar sua conta.",
+            preheader = "Bem-vindo ao Redirect Grupo! Clique para ativar sua conta.",
             body = """
                 <h1 style="font-size:22px;font-weight:700;color:#111827;margin:0 0 8px">
-                    Bem-vindo ao GrupoLink, ${escapeHtml(name)}!
+                    Bem-vindo ao Redirect Grupo, ${escapeHtml(name)}!
                 </h1>
                 <p style="font-size:15px;color:#6b7280;margin:0 0 24px;line-height:1.6">
                     Sua conta foi criada com sucesso. Para começar a usar a plataforma,
@@ -33,7 +33,7 @@ abstract class AbstractEmailService : EmailService {
     }
 
     override fun sendPasswordResetEmail(toAddress: String, name: String, resetLink: String) {
-        val subject = "Redefinição de senha — GrupoLink"
+        val subject = "Redefinição de senha — Redirect Grupo"
         val html = emailLayout(
             preheader = "Recebemos uma solicitação para redefinir sua senha.",
             body = """
@@ -85,7 +85,7 @@ abstract class AbstractEmailService : EmailService {
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>GrupoLink</title></head>
+        <title>Redirect Grupo</title></head>
         <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
           <div style="display:none;max-height:0;overflow:hidden;color:#f3f4f6;font-size:1px">$preheader</div>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 16px">
@@ -94,7 +94,7 @@ abstract class AbstractEmailService : EmailService {
                 <!-- Header -->
                 <tr><td style="background:#0d9488;border-radius:12px 12px 0 0;padding:28px 40px;text-align:center">
                   <span style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">
-                    G&nbsp;<span style="font-weight:400">GrupoLink</span>
+                    Redirect&nbsp;<span style="font-weight:400">Grupo</span>
                   </span>
                 </td></tr>
                 <!-- Body -->
@@ -102,8 +102,8 @@ abstract class AbstractEmailService : EmailService {
                   $body
                   <hr style="margin:32px 0;border:none;border-top:1px solid #f3f4f6"/>
                   <p style="font-size:12px;color:#9ca3af;margin:0;line-height:1.6;text-align:center">
-                    GrupoLink · <a href="https://www.redirectgrupo.com.br" style="color:#0d9488;text-decoration:none">redirectgrupo.com.br</a><br>
-                    Você está recebendo este e-mail porque se cadastrou na plataforma GrupoLink.
+                    Redirect Grupo · <a href="https://www.redirectgrupo.com.br" style="color:#0d9488;text-decoration:none">redirectgrupo.com.br</a><br>
+                    Você está recebendo este e-mail porque se cadastrou na plataforma Redirect Grupo.
                   </p>
                 </td></tr>
               </table>

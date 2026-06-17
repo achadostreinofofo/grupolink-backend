@@ -47,7 +47,7 @@ class MercadoPagoService(
 
     private fun buildRequest(planName: String, price: BigDecimal, payerEmail: String): PreapprovalCreateRequest =
         PreapprovalCreateRequest.builder()
-            .reason("GrupoLink - Plano $planName")
+            .reason("Redirect Grupo - Plano $planName")
             .payerEmail(payerEmail)
             .backUrl("$frontendUrl/billing/success?plan=${planName.lowercase()}")
             .status("pending")
@@ -67,7 +67,7 @@ class MercadoPagoService(
             ?: throw IllegalArgumentException("Plano desconhecido: $planName")
 
         val body = mapOf(
-            "reason"          to "GrupoLink - Plano $planName",
+            "reason"          to "Redirect Grupo - Plano $planName",
             "payer_email"     to payerEmail,
             "card_token_id"   to cardTokenId,
             "status"          to "authorized",
