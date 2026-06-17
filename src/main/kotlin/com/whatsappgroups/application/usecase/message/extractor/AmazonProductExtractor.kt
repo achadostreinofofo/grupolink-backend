@@ -2,13 +2,19 @@ package com.whatsappgroups.application.usecase.message.extractor
 
 import com.whatsappgroups.infrastructure.amazon.AmazonScraperClient
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.util.UUID
 
 // Extração de dados de produto da Amazon a partir do HTML da página (a Amazon não tem API
 // pública de leitura sem afiliado aprovado). Resolve links curtos amzn.to via redirect e
 // parseia título, preço e imagem do markup/JSON embutido.
+//
+// DESATIVADO por padrão: a Amazon bloqueia IPs de datacenter (AWS) com CAPTCHA/Robot Check,
+// então o scraping direto não funciona em produção. Reativar (app.amazon.enabled=true) só faz
+// sentido com PA-API oficial ou um proxy residencial/serviço de scraping. O código fica pronto.
 @Component
+@ConditionalOnProperty(name = ["app.amazon.enabled"], havingValue = "true", matchIfMissing = false)
 class AmazonProductExtractor(
     private val amazonScraperClient: AmazonScraperClient
 ) : ProductExtractor {
