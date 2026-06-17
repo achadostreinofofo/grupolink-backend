@@ -42,6 +42,14 @@ class AuthController(
     fun verifyEmail(@RequestParam token: String): ResponseEntity<AuthResponse> =
         ResponseEntity.ok(authUseCase.verifyEmail(token))
 
+    @PostMapping("/resend-verification")
+    fun resendVerification(@Valid @RequestBody request: ResendVerificationRequest): ResponseEntity<Map<String, String>> {
+        authUseCase.resendVerification(request)
+        return ResponseEntity.ok(mapOf(
+            "message" to "Se houver uma conta pendente com este e-mail, reenviamos a confirmação."
+        ))
+    }
+
     @PostMapping("/forgot-password")
     fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequest): ResponseEntity<Map<String, String>> {
         authUseCase.forgotPassword(request)

@@ -72,6 +72,27 @@ class AuthUseCase(
     }
 
     @Transactional
+    fun resendVerification(request: ResendVerificationRequest) {
+        val user = userRepository.findByEmail(request.email)
+        // Não revelamos se a conta existe ou já está ativa — só reenviamos se estiver pendente.
+        if (user == null || user.status != UserStatus.PENDING_VERIFICATION) {
+            log.info("Resend verification: nada a fazer para ${request.email}")
+            return
+        }
+
+        val verificationToken = UUID.randomUUID().toString().replace("-", "")
+        user.emailVerificationToken = verificationToken
+        user.updatedAt              = LocalDateTime.now()
+
+        val activationLink = "$frontendUrl/verify-email?token=$verificationToken"
+        try {
+            emailService.sendVerificationEmail(user.email, user.name, activationLink)
+        } catch (e: Exception) {
+            log.error("Failed to resend verification email to ${user.email}: ${e.message}")
+        }
+    }
+
+    @Transactional
     fun verifyEmail(token: String): AuthResponse {
         val user = userRepository.findByEmailVerificationToken(token)
             ?: throw IllegalArgumentException("Token de verificação inválido ou já utilizado")

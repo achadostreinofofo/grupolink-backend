@@ -4,6 +4,7 @@ import com.mercadopago.exceptions.MPApiException
 import com.mercadopago.exceptions.MPException
 import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import com.whatsappgroups.application.usecase.auth.EmailAlreadyExistsException
+import com.whatsappgroups.application.usecase.auth.EmailNotVerifiedException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -37,6 +38,15 @@ class GlobalExceptionHandler {
         ResponseEntity.status(HttpStatus.CONFLICT).body(mapOf(
             "error" to "CPF_ALREADY_EXISTS",
             "message" to "Já existe uma conta cadastrada com este CPF."
+        ))
+
+    // 403 (não 401): 401 faz o frontend disparar o fluxo de "sessão expirada". O código
+    // EMAIL_NOT_VERIFIED permite à tela de login abrir o popup com a opção de reenviar.
+    @ExceptionHandler(EmailNotVerifiedException::class)
+    fun handleEmailNotVerified(ex: EmailNotVerifiedException): ResponseEntity<Map<String, String>> =
+        ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf(
+            "error" to "EMAIL_NOT_VERIFIED",
+            "message" to "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada."
         ))
 
     @ExceptionHandler(IllegalArgumentException::class)

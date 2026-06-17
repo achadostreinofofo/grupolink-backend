@@ -1,6 +1,7 @@
 package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.dto.LoginRequest
+import com.whatsappgroups.application.dto.ResendVerificationRequest
 import com.whatsappgroups.application.dto.SignUpRequest
 import com.whatsappgroups.application.usecase.auth.AuthUseCase
 import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
@@ -160,6 +161,38 @@ class AuthUseCaseTest {
         assertThatThrownBy {
             useCase.login(LoginRequest(email = "ghost@test.com", password = "any"))
         }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `resendVerification re-sends email and refreshes token for pending user`() {
+        val user = user(email = "u@test.com", status = UserStatus.PENDING_VERIFICATION)
+            .apply { emailVerificationToken = "old-token" }
+        whenever(userRepository.findByEmail("u@test.com")).thenReturn(user)
+
+        useCase.resendVerification(ResendVerificationRequest(email = "u@test.com"))
+
+        assertThat(user.emailVerificationToken).isNotEqualTo("old-token")
+        assertThat(user.emailVerificationToken).isNotBlank()
+        verify(emailService).sendVerificationEmail(eq("u@test.com"), eq("Test"), any())
+    }
+
+    @Test
+    fun `resendVerification does nothing for an already active user`() {
+        val user = user(email = "u@test.com", status = UserStatus.ACTIVE)
+        whenever(userRepository.findByEmail("u@test.com")).thenReturn(user)
+
+        useCase.resendVerification(ResendVerificationRequest(email = "u@test.com"))
+
+        verify(emailService, never()).sendVerificationEmail(any(), any(), any())
+    }
+
+    @Test
+    fun `resendVerification does nothing when user does not exist`() {
+        whenever(userRepository.findByEmail(any())).thenReturn(null)
+
+        useCase.resendVerification(ResendVerificationRequest(email = "ghost@test.com"))
+
+        verify(emailService, never()).sendVerificationEmail(any(), any(), any())
     }
 
     private fun user(
