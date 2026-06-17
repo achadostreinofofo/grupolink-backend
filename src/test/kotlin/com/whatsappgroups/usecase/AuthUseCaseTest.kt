@@ -11,7 +11,7 @@ import com.whatsappgroups.domain.model.Plan
 import com.whatsappgroups.domain.model.User
 import com.whatsappgroups.domain.model.UserStatus
 import com.whatsappgroups.domain.repository.UserRepository
-import com.whatsappgroups.infrastructure.email.SesEmailService
+import com.whatsappgroups.infrastructure.email.EmailService
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -29,7 +29,7 @@ import java.util.UUID
 class AuthUseCaseTest {
 
     @Mock private lateinit var userRepository: UserRepository
-    @Mock private lateinit var emailService: SesEmailService
+    @Mock private lateinit var emailService: EmailService
     private lateinit var passwordEncoder: PasswordEncoder
     private lateinit var jwtTokenProvider: JwtTokenProvider
     private lateinit var useCase: AuthUseCase
