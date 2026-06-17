@@ -24,6 +24,10 @@ data class AuthResponse(
     val plan: String
 )
 
+data class ResendVerificationRequest(
+    @field:Email @field:NotBlank val email: String
+)
+
 data class ForgotPasswordRequest(
     @field:Email @field:NotBlank val email: String,
     @field:NotBlank val cpf: String
