@@ -36,7 +36,16 @@ class GenerateMessageFromLinkUseCase(
         val content = geminiClient.generateText(prompt)
             ?: throw IllegalStateException("Não foi possível gerar o texto no momento. Tente novamente em alguns segundos.")
 
-        val finalContent = "${content.trim()}\n\n${url}"
+        // Layout final: texto da IA → bloco de preço (determinístico) → link de afiliado.
+        val finalContent = buildString {
+            append(content.trim())
+            buildPriceBlock(product.price, product.originalPrice).takeIf { it.isNotEmpty() }?.let {
+                append("\n\n")
+                append(it)
+            }
+            append("\n\n")
+            append(url)
+        }
 
         // Persiste a imagem do produto no nosso S3, para que a mídia salva na mensagem seja
         // idêntica a um upload manual. Se o download/upload falhar, cai para a URL original
@@ -44,8 +53,25 @@ class GenerateMessageFromLinkUseCase(
         val finalImageUrl = product.imageUrl?.let { productImageService.persist(it, userId) ?: it }
 
         log.info("Generated message (${product.title}, price=${product.price ?: "n/d"}, imageUrl=${finalImageUrl ?: "n/d"})")
-        return GenerateMessageResponse(content = finalContent, imageUrl = finalImageUrl)
+        return GenerateMessageResponse(content = finalContent, imageUrl = finalImageUrl, title = product.title)
     }
+
+    // Bloco de preço inserido na mensagem (após o texto, antes do link):
+    //  - com promoção (originalPrice > price): "De R$ x\nPor R$ y"
+    //  - só preço:                              "Por R$ y"
+    //  - sem preço:                             "" (nada)
+    private fun buildPriceBlock(price: Double?, originalPrice: Double?): String {
+        if (price == null) return ""
+        val hasDiscount = originalPrice != null && originalPrice > price
+        return if (hasDiscount) {
+            "De ${formatBrl(originalPrice!!)}\nPor ${formatBrl(price)}"
+        } else {
+            "Por ${formatBrl(price)}"
+        }
+    }
+
+    private fun formatBrl(value: Double): String =
+        "R$ " + String.format(java.util.Locale.US, "%.2f", value).replace('.', ',')
 
     private fun buildPrompt(title: String, price: Double?, originalPrice: Double?): String {
         return buildString {
@@ -55,7 +81,7 @@ class GenerateMessageFromLinkUseCase(
             appendLine("- No máximo 5 linhas")
             appendLine("- Use emojis relevantes ao produto")
             appendLine("- Termine com uma frase curta incentivando clicar no link (ex: 'Aproveite 👇', 'Corre lá 🔥')")
-            appendLine("- NÃO inclua o link na mensagem — ele será adicionado automaticamente")
+            appendLine("- NÃO inclua valores de preço nem o link na mensagem — eles serão adicionados automaticamente")
             appendLine("- Escreva em português informal e direto")
             appendLine()
             appendLine("Dados do produto:")

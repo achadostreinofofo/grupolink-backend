@@ -45,7 +45,18 @@ class GenerateMessageFromLinkUseCaseTest {
     }
 
     @Test
-    fun `builds prompt with discount and appends the affiliate link`() {
+    fun `returns the product title for the message title field`() {
+        setup()
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta Dry Fit", price = 49.9, originalPrice = null, imageUrl = null))
+
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
+
+        assertThat(res.title).isEqualTo("Camiseta Dry Fit")
+    }
+
+    @Test
+    fun `appends De-Por price block then the affiliate link when there is a discount`() {
         setup()
         whenever(extractor.extract(any(), eq(userId)))
             .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = 99.9, imageUrl = null))
@@ -53,24 +64,30 @@ class GenerateMessageFromLinkUseCaseTest {
         val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123-camiseta"))
 
         assertThat(res.content).startsWith("Texto gerado 🔥")
-        assertThat(res.content).contains("https://produto.mercadolivre.com.br/MLB-123-camiseta")
-        verify(geminiClient).generateText(argThat { contains("Camiseta") && contains("49,90") && contains("99,90") })
+        assertThat(res.content).contains("De R$ 99,90")
+        assertThat(res.content).contains("Por R$ 49,90")
+        // ordem: texto → preço → link
+        assertThat(res.content.indexOf("De R$ 99,90")).isGreaterThan(res.content.indexOf("Texto gerado"))
+        assertThat(res.content.indexOf("https://produto.mercadolivre.com.br/MLB-123-camiseta"))
+            .isGreaterThan(res.content.indexOf("Por R$ 49,90"))
+        // "De R$" vem antes de "Por R$"
+        assertThat(res.content.indexOf("De R$ 99,90")).isLessThan(res.content.indexOf("Por R$ 49,90"))
     }
 
     @Test
-    fun `ignores original price when it is not greater than the current price`() {
+    fun `appends only Por when there is a single price (no discount)`() {
         setup()
         whenever(extractor.extract(any(), eq(userId)))
             .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = 49.9, imageUrl = null))
 
-        useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
 
-        // No discount line, just "Preço:"
-        verify(geminiClient).generateText(argThat { contains("Preço:") && !contains("OFF") })
+        assertThat(res.content).contains("Por R$ 49,90")
+        assertThat(res.content).doesNotContain("De R$")
     }
 
     @Test
-    fun `generates without price line when price is absent`() {
+    fun `omits the price block entirely when price is absent`() {
         setup()
         whenever(extractor.extract(any(), eq(userId)))
             .thenReturn(ExtractedProduct(title = "Produto Sem Preço", price = null, originalPrice = null, imageUrl = null))
@@ -78,7 +95,9 @@ class GenerateMessageFromLinkUseCaseTest {
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
 
         assertThat(res.content).startsWith("Texto gerado 🔥")
-        verify(geminiClient).generateText(argThat { contains("Produto Sem Preço") && !contains("Preço:") })
+        assertThat(res.content).doesNotContain("Por R$")
+        assertThat(res.content).doesNotContain("De R$")
+        verify(geminiClient).generateText(argThat { contains("Produto Sem Preço") })
     }
 
     @Test
