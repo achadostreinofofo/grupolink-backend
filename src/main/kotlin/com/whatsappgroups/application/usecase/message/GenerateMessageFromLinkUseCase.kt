@@ -2,100 +2,35 @@ package com.whatsappgroups.application.usecase.message
 
 import com.whatsappgroups.application.dto.GenerateMessageRequest
 import com.whatsappgroups.application.dto.GenerateMessageResponse
-import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
+import com.whatsappgroups.application.usecase.message.extractor.ProductExtractor
 import com.whatsappgroups.infrastructure.ai.GeminiClient
-import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
-import com.whatsappgroups.infrastructure.storage.S3UploadService
+import com.whatsappgroups.infrastructure.storage.ProductImageService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 
 @Service
 class GenerateMessageFromLinkUseCase(
-    private val mlApiClient: MercadoLivreApiClient,
+    private val extractors: List<ProductExtractor>,
     private val geminiClient: GeminiClient,
-    private val mlAccountUseCase: MercadoLivreAccountUseCase,
-    private val s3UploadService: S3UploadService
+    private val productImageService: ProductImageService
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun generate(userId: UUID, request: GenerateMessageRequest): GenerateMessageResponse {
         val url = request.productUrl.trim()
 
-        if (!isMercadoLivreUrl(url)) {
-            throw IllegalArgumentException("Apenas links do Mercado Livre são aceitos")
-        }
+        // Strategy: o primeiro extractor que suporta a URL resolve os dados do produto.
+        val extractor = extractors.firstOrNull { it.supports(url) }
+            ?: throw IllegalArgumentException("Apenas links do Mercado Livre são aceitos")
 
-        val resolvedUrl = if (url.contains("meli.la", ignoreCase = true)) {
-            log.info("Resolving short link: $url")
-            mlApiClient.resolveShortLink(url)
-        } else url
-
-        val mlbId = extractMlbId(resolvedUrl)?.also { log.info("MLB ID from URL: $it") }
-            ?: mlApiClient.extractMlbIdFromPageHtml(resolvedUrl)
-            ?: throw IllegalArgumentException("Link não corresponde a um produto específico do Mercado Livre")
-
-        log.info("Fetching ML product: $mlbId (resolved from $url)")
-
-        // The items/products APIs require authentication, so a connected ML account is mandatory.
-        val accessToken = mlAccountUseCase.getValidAccessToken(userId)
-            ?: throw IllegalStateException("Conecte sua conta do Mercado Livre nas integrações para gerar o texto a partir do link.")
-
-        // Resolve title + price from multiple sources:
-        //  1) /items/{id}     → works for individual listings
-        //  2) /products/{id}  → catalog products (where /items returns 403)
-        //  3) og:title (HTML) → last resort for the title, so we can still generate without price
-        var title: String? = null
-        var price: Double? = null
-        var originalPrice: Double? = null
-        var imageUrl: String? = null
-
-        mlApiClient.getItem(mlbId, accessToken)?.let { item ->
-            title = item.title.takeIf { it.isNotBlank() }
-            price = item.price
-            originalPrice = item.originalPrice
-            imageUrl = item.thumbnail
-        }
-
-        // /sale_price retorna amount (preço atual) e regular_amount (preço riscado), calculados
-        // de múltiplas fontes pelo ML. Chamado sempre que preço ou desconto ainda está ausente:
-        // cobre tanto itens de vitrine social (price=null após /items) quanto itens sem promoção
-        // formal (originalPrice=null). Falha silenciosamente se o ID for de catálogo.
-        if (price == null || originalPrice == null) {
-            mlApiClient.getItemSalePrice(mlbId, accessToken)?.let { sp ->
-                if (price == null && sp.amount != null) price = sp.amount
-                if (originalPrice == null && sp.regularAmount != null) originalPrice = sp.regularAmount
-            }
-        }
-
-        if (title == null || price == null) {
-            mlApiClient.getCatalogProduct(mlbId, accessToken)?.let { product ->
-                if (title == null) title = product.name?.takeIf { it.isNotBlank() }
-                if (price == null) price = product.buyBoxWinner?.price
-                if (originalPrice == null) originalPrice = product.buyBoxWinner?.originalPrice
-            }
-        }
-
-        // Último recurso (e única fonte para vitrines sociais): extrai título, preço, preço
-        // riscado e imagem direto do HTML embutido. As APIs acima não resolvem o product_id de
-        // afiliado das páginas /social/, mas a página traz todos esses dados.
-        if (title == null || price == null || imageUrl == null) {
-            mlApiClient.extractProductDataFromPage(resolvedUrl)?.let { page ->
-                if (title == null) title = page.title
-                if (price == null) price = page.price
-                if (originalPrice == null) originalPrice = page.originalPrice
-                if (imageUrl == null) imageUrl = page.imageUrl
-            }
-        }
-
-        val finalTitle = title?.takeIf { it.isNotBlank() }
+        val product = extractor.extract(url, userId)
             ?: throw IllegalStateException("Não foi possível obter as informações do produto. Verifique se o link é válido e tente novamente.")
 
-        val finalPrice = price
         val prompt = buildPrompt(
-            title         = finalTitle,
-            price         = finalPrice,
-            originalPrice = originalPrice?.takeIf { finalPrice != null && it > finalPrice }
+            title         = product.title,
+            price         = product.price,
+            originalPrice = product.originalPrice?.takeIf { product.price != null && it > product.price }
         )
 
         val content = geminiClient.generateText(prompt)
@@ -103,35 +38,13 @@ class GenerateMessageFromLinkUseCase(
 
         val finalContent = "${content.trim()}\n\n${url}"
 
-        // Persiste a imagem do ML no nosso S3, para que a mídia salva na mensagem seja idêntica a
-        // um upload manual (não dependa de URL externa no momento do envio). Se o download/upload
-        // falhar, cai para a URL original do ML (graceful degradation — a mensagem ainda tem imagem).
-        val finalImageUrl = imageUrl?.let { persistImageToS3(it, userId) ?: it }
+        // Persiste a imagem do produto no nosso S3, para que a mídia salva na mensagem seja
+        // idêntica a um upload manual. Se o download/upload falhar, cai para a URL original
+        // (graceful degradation — a mensagem ainda tem imagem).
+        val finalImageUrl = product.imageUrl?.let { productImageService.persist(it, userId) ?: it }
 
-        log.info("Generated message for product $mlbId ($finalTitle, price=${finalPrice ?: "n/d"}, imageUrl=${finalImageUrl ?: "n/d"})")
+        log.info("Generated message (${product.title}, price=${product.price ?: "n/d"}, imageUrl=${finalImageUrl ?: "n/d"})")
         return GenerateMessageResponse(content = finalContent, imageUrl = finalImageUrl)
-    }
-
-    private fun persistImageToS3(imageUrl: String, userId: UUID): String? {
-        val (bytes, contentType) = mlApiClient.downloadImage(imageUrl) ?: return null
-        return try {
-            s3UploadService.uploadImageBytes(bytes, contentType, userId.toString())
-        } catch (e: Exception) {
-            log.warn("Falha ao subir imagem do produto para o S3 ($imageUrl): ${e.message}")
-            null
-        }
-    }
-
-    private fun isMercadoLivreUrl(url: String): Boolean {
-        return url.contains("mercadolivre.com.br", ignoreCase = true) ||
-               url.contains("mercadolibre.com", ignoreCase = true) ||
-               url.contains("meli.la", ignoreCase = true) ||
-               url.contains("produto.mercadolivre", ignoreCase = true)
-    }
-
-    private fun extractMlbId(url: String): String? {
-        val match = Regex("""MLB-?(\d+)""").find(url) ?: return null
-        return "MLB${match.groupValues[1]}"
     }
 
     private fun buildPrompt(title: String, price: Double?, originalPrice: Double?): String {

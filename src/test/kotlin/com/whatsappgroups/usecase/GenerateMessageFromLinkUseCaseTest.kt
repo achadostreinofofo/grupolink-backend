@@ -2,15 +2,11 @@
 package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.dto.GenerateMessageRequest
-import com.whatsappgroups.application.dto.MlBuyBoxWinner
-import com.whatsappgroups.application.dto.MlItemDetails
-import com.whatsappgroups.application.dto.MlPageProductData
-import com.whatsappgroups.application.dto.MlProductDetails
 import com.whatsappgroups.application.usecase.message.GenerateMessageFromLinkUseCase
-import com.whatsappgroups.application.usecase.ml.MercadoLivreAccountUseCase
+import com.whatsappgroups.application.usecase.message.extractor.ExtractedProduct
+import com.whatsappgroups.application.usecase.message.extractor.ProductExtractor
 import com.whatsappgroups.infrastructure.ai.GeminiClient
-import com.whatsappgroups.infrastructure.ml.MercadoLivreApiClient
-import com.whatsappgroups.infrastructure.storage.S3UploadService
+import com.whatsappgroups.infrastructure.storage.ProductImageService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -26,140 +22,108 @@ import java.util.UUID
 @MockitoSettings(strictness = Strictness.LENIENT)
 class GenerateMessageFromLinkUseCaseTest {
 
-    @Mock private lateinit var mlApiClient: MercadoLivreApiClient
+    @Mock private lateinit var extractor: ProductExtractor
     @Mock private lateinit var geminiClient: GeminiClient
-    @Mock private lateinit var mlAccountUseCase: MercadoLivreAccountUseCase
-    @Mock private lateinit var s3UploadService: S3UploadService
+    @Mock private lateinit var productImageService: ProductImageService
 
     private lateinit var useCase: GenerateMessageFromLinkUseCase
     private val userId = UUID.randomUUID()
 
     private fun setup() {
-        useCase = GenerateMessageFromLinkUseCase(mlApiClient, geminiClient, mlAccountUseCase, s3UploadService)
-        whenever(mlAccountUseCase.getValidAccessToken(userId)).thenReturn("token")
+        useCase = GenerateMessageFromLinkUseCase(listOf(extractor), geminiClient, productImageService)
+        whenever(extractor.supports(any())).thenReturn(true)
         whenever(geminiClient.generateText(any())).thenReturn("Texto gerado 🔥")
     }
 
-    private fun item(title: String, price: Double?, original: Double? = null) = MlItemDetails(
-        id = "MLB1", title = title, permalink = null, thumbnail = null,
-        price = price, originalPrice = original, currencyId = "BRL", condition = "new", availableQuantity = 1
-    )
-
     @Test
-    fun `rejects non Mercado Livre URLs`() {
+    fun `rejects URLs not supported by any extractor`() {
         setup()
+        whenever(extractor.supports(any())).thenReturn(false)
+
         assertThatThrownBy { useCase.generate(userId, GenerateMessageRequest("https://amazon.com/x")) }
             .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
-    fun `requires a connected ML account`() {
+    fun `builds prompt with discount and appends the affiliate link`() {
         setup()
-        whenever(mlAccountUseCase.getValidAccessToken(userId)).thenReturn(null)
-        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
-
-        assertThatThrownBy {
-            useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Conecte sua conta")
-    }
-
-    @Test
-    fun `generates from an individual listing via items API`() {
-        setup()
-        whenever(mlApiClient.getItem("MLB123", "token")).thenReturn(item("Camiseta", 49.9))
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = 99.9, imageUrl = null))
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123-camiseta"))
 
         assertThat(res.content).startsWith("Texto gerado 🔥")
         assertThat(res.content).contains("https://produto.mercadolivre.com.br/MLB-123-camiseta")
-        verify(mlApiClient, never()).getCatalogProduct(any(), any())
-        verify(geminiClient).generateText(argThat { contains("Camiseta") && contains("49,90") })
+        verify(geminiClient).generateText(argThat { contains("Camiseta") && contains("49,90") && contains("99,90") })
     }
 
     @Test
-    fun `falls back to catalog product when items returns 403 (null)`() {
+    fun `ignores original price when it is not greater than the current price`() {
         setup()
-        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
-        whenever(mlApiClient.getCatalogProduct("MLB123", "token"))
-            .thenReturn(MlProductDetails(id = "MLB123", name = "Creatina 300g", buyBoxWinner = MlBuyBoxWinner(price = 51.47, originalPrice = null)))
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = 49.9, imageUrl = null))
 
-        val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/creatina/p/MLB123"))
+        useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
 
-        assertThat(res.content).startsWith("Texto gerado 🔥")
-        assertThat(res.content).contains("https://www.mercadolivre.com.br/creatina/p/MLB123")
-        verify(geminiClient).generateText(argThat { contains("Creatina 300g") && contains("51,47") })
+        // No discount line, just "Preço:"
+        verify(geminiClient).generateText(argThat { contains("Preço:") && !contains("OFF") })
     }
 
     @Test
-    fun `falls back to og title and generates without price`() {
+    fun `generates without price line when price is absent`() {
         setup()
-        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
-        whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
-        whenever(mlApiClient.extractProductDataFromPage(any()))
-            .thenReturn(MlPageProductData(title = "Produto Sem Preço"))
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Produto Sem Preço", price = null, originalPrice = null, imageUrl = null))
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
 
         assertThat(res.content).startsWith("Texto gerado 🔥")
-        assertThat(res.content).contains("https://www.mercadolivre.com.br/p/MLB123")
-        // Prompt has the title but no "Preço" line
         verify(geminiClient).generateText(argThat { contains("Produto Sem Preço") && !contains("Preço:") })
     }
 
     @Test
-    fun `extracts social page data and reuploads the image to S3`() {
+    fun `persists product image to S3 and returns the S3 URL`() {
         setup()
-        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
-        whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
-        whenever(mlApiClient.extractMlbIdFromPageHtml(any())).thenReturn("MLB66637233")
-        whenever(mlApiClient.extractProductDataFromPage(any())).thenReturn(
-            MlPageProductData(
-                title = "Creatina Monohidratada 500g",
-                price = 69.9,
-                originalPrice = 104.9,
-                imageUrl = "https://http2.mlstatic.com/img.webp"
-            )
-        )
-        whenever(mlApiClient.downloadImage("https://http2.mlstatic.com/img.webp"))
-            .thenReturn(byteArrayOf(1, 2, 3) to "image/webp")
-        whenever(s3UploadService.uploadImageBytes(any(), eq("image/webp"), eq(userId.toString())))
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Creatina", price = 69.9, originalPrice = 104.9, imageUrl = "https://http2.mlstatic.com/img.webp"))
+        whenever(productImageService.persist("https://http2.mlstatic.com/img.webp", userId))
             .thenReturn("https://bucket.s3.amazonaws.com/messages/uid/abc.webp")
 
         val res = useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/social/perfil"))
 
-        assertThat(res.content).startsWith("Texto gerado 🔥")
-        // imageUrl is the S3 URL, not the external ML URL
         assertThat(res.imageUrl).isEqualTo("https://bucket.s3.amazonaws.com/messages/uid/abc.webp")
-        verify(geminiClient).generateText(argThat { contains("Creatina Monohidratada 500g") && contains("69,90") && contains("104,90") })
     }
 
     @Test
-    fun `falls back to the original ML image URL when S3 upload fails`() {
+    fun `falls back to the original image URL when S3 persistence fails`() {
         setup()
-        whenever(mlApiClient.getItem("MLB123", "token"))
-            .thenReturn(MlItemDetails(
-                id = "MLB123", title = "Camiseta", permalink = null,
-                thumbnail = "https://http2.mlstatic.com/thumb.webp",
-                price = 49.9, originalPrice = null, currencyId = "BRL", condition = "new", availableQuantity = 1
-            ))
-        whenever(mlApiClient.downloadImage(any())).thenReturn(null)
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = null, imageUrl = "https://http2.mlstatic.com/thumb.webp"))
+        whenever(productImageService.persist(any(), any())).thenReturn(null)
 
-        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123-camiseta"))
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
 
         assertThat(res.imageUrl).isEqualTo("https://http2.mlstatic.com/thumb.webp")
-        verify(s3UploadService, never()).uploadImageBytes(any(), any(), any())
     }
 
     @Test
-    fun `throws when no product info can be resolved`() {
+    fun `does not touch the image service when there is no image`() {
         setup()
-        whenever(mlApiClient.getItem(any(), anyOrNull())).thenReturn(null)
-        whenever(mlApiClient.getCatalogProduct(any(), any())).thenReturn(null)
-        whenever(mlApiClient.extractProductDataFromPage(any())).thenReturn(null)
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = null, imageUrl = null))
 
-        assertThatThrownBy {
-            useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123"))
-        }.isInstanceOf(IllegalStateException::class.java)
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
+
+        assertThat(res.imageUrl).isNull()
+        verify(productImageService, never()).persist(any(), any())
+    }
+
+    @Test
+    fun `throws when extractor cannot resolve product info`() {
+        setup()
+        whenever(extractor.extract(any(), eq(userId))).thenReturn(null)
+
+        assertThatThrownBy { useCase.generate(userId, GenerateMessageRequest("https://www.mercadolivre.com.br/p/MLB123")) }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 }
