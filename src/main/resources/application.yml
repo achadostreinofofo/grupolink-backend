@@ -103,6 +103,11 @@ app:
     client-secret: ${ML_CLIENT_SECRET:}
     redirect-uri: ${ML_REDIRECT_URI:http://localhost:8080/api/ml/oauth/callback}
 
+  amazon:
+    # Scraping da Amazon desativado: IPs de datacenter (AWS) são bloqueados com CAPTCHA.
+    # Reativar (AMAZON_ENABLED=true) só com PA-API oficial ou proxy residencial.
+    enabled: ${AMAZON_ENABLED:false}
+
   gemini:
     api-key: ${GEMINI_API_KEY:}
     # gemini-2.5-flash-lite: modelo mais barato disponível para a chave (billing ativo) e
