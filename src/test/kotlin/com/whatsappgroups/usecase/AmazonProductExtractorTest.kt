@@ -91,6 +91,32 @@ class AmazonProductExtractorTest {
     }
 
     @Test
+    fun `throws a friendly error on a Robot Check page`() {
+        setup()
+        whenever(scraperClient.fetchProductHtml(any())).thenReturn(
+            """<html><head><title>Robot Check</title></head><body>we just need to make sure you're not a robot</body></html>"""
+        )
+
+        assertThatThrownBy { extractor.extract("https://amzn.to/abc", userId) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Amazon bloqueou")
+    }
+
+    @Test
+    fun `falls back to the page title when productTitle is absent`() {
+        setup()
+        whenever(scraperClient.fetchProductHtml(any())).thenReturn(
+            """<html><head><title>Whey Protein Isolado 900g – DUX | Amazon.com.br</title></head>
+               <body><script>"priceAmount":329.90</script></body></html>"""
+        )
+
+        val p = extractor.extract("https://www.amazon.com.br/dp/X", userId)!!
+
+        assertThat(p.title).isEqualTo("Whey Protein Isolado 900g – DUX")
+        assertThat(p.price).isEqualTo(329.90)
+    }
+
+    @Test
     fun `parseImage falls back to hiRes JSON when data-old-hires is absent`() {
         setup()
         val html = """<img id="landingImage" src="x"/><script>"hiRes":"https://m.media-amazon.com/images/I/ABC._AC_SL1000_.jpg"</script>"""

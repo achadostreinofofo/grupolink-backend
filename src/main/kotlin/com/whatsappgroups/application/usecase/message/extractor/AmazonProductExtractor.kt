@@ -23,14 +23,23 @@ class AmazonProductExtractor(
     override fun extract(url: String, userId: UUID): ExtractedProduct? {
         val html = amazonScraperClient.fetchProductHtml(url) ?: return null
 
-        if (isCaptcha(html)) {
-            log.warn("Amazon retornou CAPTCHA/robot check para $url")
+        if (isBlocked(html)) {
+            log.warn("Amazon retornou página de bloqueio/CAPTCHA para $url")
             throw IllegalStateException(
                 "A Amazon bloqueou a leitura automática deste link no momento. Tente novamente em alguns instantes."
             )
         }
 
-        val title = parseTitle(html) ?: return null
+        val title = parseTitle(html)
+        if (title == null) {
+            // Diagnóstico: ajuda a distinguir "layout diferente" de "bloqueio não detectado"
+            // a partir dos logs, sem expor detalhes ao usuário.
+            val pageTitle = Regex("""<title>([^<]*)</title>""", RegexOption.IGNORE_CASE)
+                .find(html)?.groupValues?.get(1)?.trim()
+            log.warn("Amazon: produto não extraído de $url (htmlLen=${html.length}, pageTitle='$pageTitle')")
+            return null
+        }
+
         return ExtractedProduct(
             title         = title,
             price         = parsePrice(html),
@@ -39,20 +48,39 @@ class AmazonProductExtractor(
         )
     }
 
-    // A página de robot check da Amazon não tem os dados do produto; detectamos para dar um
-    // erro claro em vez de "não foi possível obter as informações".
-    internal fun isCaptcha(html: String): Boolean =
+    // A página de robot check / erro da Amazon não tem os dados do produto; detectamos para dar
+    // um erro claro em vez de "não foi possível obter as informações".
+    internal fun isBlocked(html: String): Boolean =
         html.contains("/errors/validateCaptcha", ignoreCase = true) ||
         html.contains("Type the characters you see in this image", ignoreCase = true) ||
         html.contains("Digite os caracteres", ignoreCase = true) ||
-        html.contains("Insira os caracteres que você vê", ignoreCase = true)
+        html.contains("Insira os caracteres que você vê", ignoreCase = true) ||
+        html.contains("Robot Check", ignoreCase = true) ||
+        html.contains("To discuss automated access to Amazon data", ignoreCase = true) ||
+        html.contains("we just need to make sure you're not a robot", ignoreCase = true)
 
-    internal fun parseTitle(html: String): String? =
-        Regex("""id="productTitle"[^>]*>([^<]+)""")
+    // Título: o productTitle é a fonte primária; o <title> da página é fallback (variações de
+    // layout). Páginas de bloqueio com títulos genéricos são descartadas.
+    internal fun parseTitle(html: String): String? {
+        val fromProduct = Regex("""id="productTitle"[^>]*>([^<]+)""")
             .find(html)?.groupValues?.get(1)
+
+        val fromTitleTag = Regex("""<title>([^<]+)</title>""", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)
+            ?.substringBeforeLast('|')          // remove " | Amazon.com.br"
+            ?.trim()
+            ?.takeIf { t ->
+                t.isNotBlank() &&
+                !t.equals("Amazon.com.br", ignoreCase = true) &&
+                !t.contains("Robot Check", ignoreCase = true) &&
+                !t.startsWith("Amazon.com", ignoreCase = true)
+            }
+
+        return (fromProduct ?: fromTitleTag)
             ?.let(::decodeHtmlEntities)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+    }
 
     // Preço atual: vem do JSON do buybox ("priceAmount":329.90) — confiável e já numérico
     // (com ponto decimal), evitando a conversão do texto visível "R$ 329,90".
