@@ -12,10 +12,10 @@ import org.springframework.context.annotation.Configuration
 @Configuration
 @OpenAPIDefinition(
     info = Info(
-        title       = "GrupoLink API",
+        title       = "Redirect Grupo API",
         version     = "1.0",
         description = """
-            API pública do GrupoLink — plataforma SaaS para gerenciamento automático de
+            API pública do Redirect Grupo — plataforma SaaS para gerenciamento automático de
             grupos WhatsApp com sistema de afiliados.
 
             **Autenticação:** Use o endpoint `/api/auth/login` para obter um token JWT
@@ -23,11 +23,11 @@ import org.springframework.context.annotation.Configuration
 
             Disponível para assinantes do **Plano Black**.
         """,
-        contact = Contact(name = "Suporte GrupoLink", email = "suporte@grupolink.com")
+        contact = Contact(name = "Suporte Redirect Grupo", email = "contato@redirectgrupo.com.br")
     ),
     servers = [
         Server(url = "http://localhost:8080", description = "Desenvolvimento local"),
-        Server(url = "https://api.grupolink.com", description = "Produção")
+        Server(url = "https://api.redirectgrupo.com.br", description = "Produção")
     ],
     security = [SecurityRequirement(name = "Bearer JWT")]
 )
