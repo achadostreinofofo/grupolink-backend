@@ -180,25 +180,6 @@ class MercadoLivreApiClient(
         return MlPageProductData(title = title, price = price, originalPrice = originalPrice, imageUrl = imageUrl)
     }
 
-    // Baixa os bytes de uma imagem (CDN do ML) junto com o content-type, para reupload no S3.
-    // Reusa o htmlClient (User-Agent de browser + limite de buffer ampliado) para não ser
-    // bloqueado pelo CDN. Retorna null em qualquer falha (graceful degradation no caller).
-    fun downloadImage(url: String): Pair<ByteArray, String>? {
-        return try {
-            val response = htmlClient.get()
-                .uri(url)
-                .retrieve()
-                .toEntity(ByteArray::class.java)
-                .block() ?: return null
-            val bytes = response.body?.takeIf { it.isNotEmpty() } ?: return null
-            val contentType = response.headers.contentType?.toString() ?: "image/jpeg"
-            bytes to contentType
-        } catch (e: Exception) {
-            log.warn("downloadImage falhou para $url: ${e.message}")
-            null
-        }
-    }
-
     private fun extractOgTitleFromHtml(body: String): String? =
         Regex("""<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
             .find(body)?.groupValues?.get(1)
