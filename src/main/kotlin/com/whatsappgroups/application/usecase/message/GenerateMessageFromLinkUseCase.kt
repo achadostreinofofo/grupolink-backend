@@ -22,7 +22,7 @@ class GenerateMessageFromLinkUseCase(
 
         // Strategy: o primeiro extractor que suporta a URL resolve os dados do produto.
         val extractor = extractors.firstOrNull { it.supports(url) }
-            ?: throw IllegalArgumentException("Apenas links do Mercado Livre são aceitos")
+            ?: throw IllegalArgumentException("Apenas links do Mercado Livre ou da Amazon são aceitos")
 
         val product = extractor.extract(url, userId)
             ?: throw IllegalStateException("Não foi possível obter as informações do produto. Verifique se o link é válido e tente novamente.")
@@ -75,7 +75,7 @@ class GenerateMessageFromLinkUseCase(
 
     private fun buildPrompt(title: String, price: Double?, originalPrice: Double?): String {
         return buildString {
-            appendLine("Crie uma mensagem de WhatsApp curta e persuasiva em português informal para divulgar o seguinte produto do Mercado Livre em grupos de WhatsApp.")
+            appendLine("Crie uma mensagem de WhatsApp curta e persuasiva em português informal para divulgar o seguinte produto em grupos de WhatsApp.")
             appendLine()
             appendLine("Regras obrigatórias:")
             appendLine("- No máximo 5 linhas")
