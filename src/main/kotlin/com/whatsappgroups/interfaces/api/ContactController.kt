@@ -1,6 +1,6 @@
 package com.whatsappgroups.interfaces.api
 
-import com.whatsappgroups.infrastructure.email.SesEmailService
+import com.whatsappgroups.infrastructure.email.EmailService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -29,13 +29,13 @@ data class ContactRequest(
 @RestController
 @RequestMapping("/api/contact")
 class ContactController(
-    private val sesEmailService: SesEmailService,
+    private val emailService: EmailService,
     @Value("\${app.contact.email:contato@redirectgrupo.com.br}") private val contactEmail: String
 ) {
 
     @PostMapping
     fun send(@Valid @RequestBody request: ContactRequest): ResponseEntity<Map<String, String>> {
-        sesEmailService.sendContactEmail(
+        emailService.sendContactEmail(
             toAddress   = contactEmail,
             senderName  = request.name,
             senderEmail = request.email,

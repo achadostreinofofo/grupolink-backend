@@ -87,6 +87,14 @@ app:
     region: ${S3_REGION:us-east-1}
     base-url: ${S3_BASE_URL:}
 
+  # Provedor de e-mail transacional: "resend" (padrão) ou "ses".
+  email:
+    provider: ${EMAIL_PROVIDER:resend}
+
+  resend:
+    api-key: ${RESEND_API_KEY:}
+    from: ${RESEND_FROM:Redirect Grupo <noreply@redirectgrupo.com.br>}
+
   ses:
     region: ${SES_REGION:${S3_REGION:us-east-1}}
     from: ${SES_FROM_EMAIL:noreply@redirectgrupo.com.br}

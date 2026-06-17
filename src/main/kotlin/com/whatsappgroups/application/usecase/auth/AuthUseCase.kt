@@ -4,7 +4,7 @@ import com.whatsappgroups.application.dto.*
 import com.whatsappgroups.domain.model.User
 import com.whatsappgroups.domain.model.UserStatus
 import com.whatsappgroups.domain.repository.UserRepository
-import com.whatsappgroups.infrastructure.email.SesEmailService
+import com.whatsappgroups.infrastructure.email.EmailService
 import com.whatsappgroups.infrastructure.security.JwtTokenProvider
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -19,7 +19,7 @@ class AuthUseCase(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
-    private val emailService: SesEmailService,
+    private val emailService: EmailService,
     @Value("\${app.frontend-url:https://www.redirectgrupo.com.br}") private val frontendUrl: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
