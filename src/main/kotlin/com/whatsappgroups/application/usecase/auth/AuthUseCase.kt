@@ -141,10 +141,12 @@ class AuthUseCase(
         if (expiresAt == null || LocalDateTime.now().isAfter(expiresAt))
             throw IllegalArgumentException("Token inválido ou expirado")
 
+        val now = LocalDateTime.now()
         user.passwordHash           = passwordEncoder.encode(request.newPassword)
         user.passwordResetToken     = null
         user.passwordResetExpiresAt = null
-        user.updatedAt              = LocalDateTime.now()
+        user.passwordChangedAt      = now   // invalida JWTs emitidos antes do reset
+        user.updatedAt              = now
     }
 
     fun buildAuthResponse(user: User) = AuthResponse(

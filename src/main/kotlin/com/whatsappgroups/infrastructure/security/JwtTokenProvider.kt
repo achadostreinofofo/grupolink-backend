@@ -5,6 +5,7 @@ import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.Instant
 import java.util.Date
 import java.util.UUID
 import javax.crypto.SecretKey
@@ -28,6 +29,10 @@ class JwtTokenProvider(
 
     fun extractUserId(token: String): UUID? = runCatching {
         UUID.fromString(parseClaims(token).subject)
+    }.getOrNull()
+
+    fun extractIssuedAt(token: String): Instant? = runCatching {
+        parseClaims(token).issuedAt?.toInstant()
     }.getOrNull()
 
     fun isValid(token: String): Boolean = runCatching {

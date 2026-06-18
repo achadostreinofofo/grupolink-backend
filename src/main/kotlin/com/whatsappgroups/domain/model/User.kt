@@ -69,6 +69,10 @@ class User(
     @Column(name = "password_reset_expires_at")
     var passwordResetExpiresAt: LocalDateTime? = null,
 
+    // Instante da última troca de senha — JWTs emitidos antes dele são rejeitados.
+    @Column(name = "password_changed_at")
+    var passwordChangedAt: LocalDateTime? = null,
+
     @OneToMany(mappedBy = "owner", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
     val structures: MutableList<Structure> = mutableListOf(),
 
