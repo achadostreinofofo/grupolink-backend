@@ -16,11 +16,22 @@ data class AddGroupRequest(
     val participantJids: List<String>? = null
 )
 
-data class ImportGroupRequest(
-    @field:NotBlank val whatsappGroupId: String,
-    val inviteLink: String? = null,
+// Importa um ou mais grupos existentes de uma vez. maxMembersPerGroup/fillThreshold são da
+// estrutura (valor único); o limite efetivo nunca fica abaixo do grupo mais cheio importado.
+data class ImportGroupsRequest(
+    val whatsappGroupIds: List<String>,
     val maxMembersPerGroup: Int? = null,    // null = mantém padrão da estrutura (256)
     val fillThreshold: Double? = null       // null = mantém padrão (0.80); range 0.1–0.99
+)
+
+data class FailedImport(
+    val whatsappGroupId: String,
+    val reason: String
+)
+
+data class ImportGroupsResponse(
+    val imported: List<GroupResponse>,
+    val failed: List<FailedImport>
 )
 
 data class GroupResponse(

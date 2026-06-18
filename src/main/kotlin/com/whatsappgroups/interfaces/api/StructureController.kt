@@ -3,7 +3,8 @@ package com.whatsappgroups.interfaces.api
 import com.whatsappgroups.application.dto.AddGroupRequest
 import com.whatsappgroups.application.dto.CreateStructureRequest
 import com.whatsappgroups.application.dto.GroupResponse
-import com.whatsappgroups.application.dto.ImportGroupRequest
+import com.whatsappgroups.application.dto.ImportGroupsRequest
+import com.whatsappgroups.application.dto.ImportGroupsResponse
 import com.whatsappgroups.application.dto.StructureResponse
 import com.whatsappgroups.application.usecase.structure.StructureUseCase
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -58,11 +59,11 @@ class StructureController(private val structureUseCase: StructureUseCase) {
             .body(structureUseCase.addGroup(UUID.fromString(user.username), id, request))
 
     @PostMapping("/{id}/groups/import")
-    fun importGroup(
+    fun importGroups(
         @AuthenticationPrincipal user: UserDetails,
         @PathVariable id: UUID,
-        @Valid @RequestBody request: ImportGroupRequest
-    ): ResponseEntity<GroupResponse> =
+        @Valid @RequestBody request: ImportGroupsRequest
+    ): ResponseEntity<ImportGroupsResponse> =
         ResponseEntity.status(HttpStatus.CREATED)
-            .body(structureUseCase.importGroup(UUID.fromString(user.username), id, request))
+            .body(structureUseCase.importGroups(UUID.fromString(user.username), id, request))
 }
