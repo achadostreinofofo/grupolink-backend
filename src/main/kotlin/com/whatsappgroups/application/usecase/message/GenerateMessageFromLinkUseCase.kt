@@ -36,12 +36,16 @@ class GenerateMessageFromLinkUseCase(
         val content = geminiClient.generateText(prompt)
             ?: throw IllegalStateException("Não foi possível gerar o texto no momento. Tente novamente em alguns segundos.")
 
-        // Layout final: texto da IA → bloco de preço (determinístico) → link de afiliado.
+        // Layout final: texto da IA → preço (determinístico) → cupom (se houver) → link.
         val finalContent = buildString {
             append(content.trim())
-            buildPriceBlock(product.price, product.originalPrice).takeIf { it.isNotEmpty() }?.let {
+            val extras = listOfNotNull(
+                buildPriceBlock(product.price, product.originalPrice).takeIf { it.isNotEmpty() },
+                product.coupon?.takeIf { it.isNotBlank() }?.let { "🎟️ $it no Mercado Livre" }
+            )
+            if (extras.isNotEmpty()) {
                 append("\n\n")
-                append(it)
+                append(extras.joinToString("\n"))
             }
             append("\n\n")
             append(url)
