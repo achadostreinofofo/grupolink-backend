@@ -296,7 +296,12 @@ class StructureUseCase(
         smartLink          = "$baseUrl/r/$slug",
         groupNamePrefix    = groupNamePrefix,
         nextGroupNumber    = nextGroupNumber,
-        groupProfilePicUrl = groupProfilePicUrl
+        groupProfilePicUrl = groupProfilePicUrl,
+        maxGroupsPerStructure = run {
+            val limit = if (OwnerAccount.isOwner(owner.email)) Int.MAX_VALUE
+                        else owner.plan.maxGroupsPerStructure
+            limit.takeIf { it != Int.MAX_VALUE }
+        }
     )
 
     private fun WhatsappGroup.toResponse() = GroupResponse(

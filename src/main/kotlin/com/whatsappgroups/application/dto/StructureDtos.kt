@@ -59,5 +59,6 @@ data class StructureResponse(
     val smartLink: String,
     val groupNamePrefix: String?,
     val nextGroupNumber: Int,
-    val groupProfilePicUrl: String?
+    val groupProfilePicUrl: String?,
+    val maxGroupsPerStructure: Int? = null   // null = ilimitado (plano Black / conta da plataforma)
 )
