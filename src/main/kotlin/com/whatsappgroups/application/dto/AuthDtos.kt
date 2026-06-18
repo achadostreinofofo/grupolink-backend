@@ -29,8 +29,7 @@ data class ResendVerificationRequest(
 )
 
 data class ForgotPasswordRequest(
-    @field:Email @field:NotBlank val email: String,
-    @field:NotBlank val cpf: String
+    @field:Email @field:NotBlank val email: String
 )
 
 data class ResetPasswordRequest(
