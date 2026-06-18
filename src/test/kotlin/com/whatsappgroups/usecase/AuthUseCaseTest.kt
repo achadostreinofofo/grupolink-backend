@@ -2,7 +2,9 @@ package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.dto.LoginRequest
 import com.whatsappgroups.application.dto.ResendVerificationRequest
+import com.whatsappgroups.application.dto.ResetPasswordRequest
 import com.whatsappgroups.application.dto.SignUpRequest
+import java.time.LocalDateTime
 import com.whatsappgroups.application.usecase.auth.AuthUseCase
 import com.whatsappgroups.application.usecase.auth.CpfAlreadyExistsException
 import com.whatsappgroups.application.usecase.auth.EmailAlreadyExistsException
@@ -193,6 +195,21 @@ class AuthUseCaseTest {
         useCase.resendVerification(ResendVerificationRequest(email = "ghost@test.com"))
 
         verify(emailService, never()).sendVerificationEmail(any(), any(), any())
+    }
+
+    @Test
+    fun `resetPassword troca a senha e marca passwordChangedAt (invalida tokens antigos)`() {
+        val user = user().apply {
+            passwordResetToken     = "tok"
+            passwordResetExpiresAt = LocalDateTime.now().plusHours(1)
+        }
+        whenever(userRepository.findByPasswordResetToken("tok")).thenReturn(user)
+
+        useCase.resetPassword(ResetPasswordRequest(token = "tok", newPassword = "novaSenha123"))
+
+        assertThat(user.passwordChangedAt).isNotNull()
+        assertThat(user.passwordResetToken).isNull()
+        assertThat(passwordEncoder.matches("novaSenha123", user.passwordHash)).isTrue()
     }
 
     private fun user(

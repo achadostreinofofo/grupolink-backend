@@ -26,9 +26,17 @@ class JwtAuthenticationFilter(
                 jwtTokenProvider.extractUserId(token)?.let { userId ->
                     try {
                         val userDetails = userDetailsService.loadUserByUsername(userId.toString())
-                        UsernamePasswordAuthenticationToken(userDetails, null, userDetails.authorities).also {
-                            it.details = WebAuthenticationDetailsSource().buildDetails(request)
-                            SecurityContextHolder.getContext().authentication = it
+
+                        // Invalida tokens emitidos antes da última troca de senha (reset).
+                        val changedAt = (userDetails as? AppUserDetails)?.passwordChangedAt
+                        val issuedAt  = jwtTokenProvider.extractIssuedAt(token)
+                        if (changedAt != null && issuedAt != null && issuedAt.isBefore(changedAt)) {
+                            SecurityContextHolder.clearContext()
+                        } else {
+                            UsernamePasswordAuthenticationToken(userDetails, null, userDetails.authorities).also {
+                                it.details = WebAuthenticationDetailsSource().buildDetails(request)
+                                SecurityContextHolder.getContext().authentication = it
+                            }
                         }
                     } catch (_: UsernameNotFoundException) {
                         // Token válido mas usuário removido — segue sem autenticar (Spring retorna 401 se necessário)
