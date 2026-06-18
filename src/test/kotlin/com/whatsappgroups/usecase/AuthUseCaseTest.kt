@@ -195,6 +195,35 @@ class AuthUseCaseTest {
         verify(emailService, never()).sendVerificationEmail(any(), any(), any())
     }
 
+    @Test
+    fun `isResetTokenValid true for a non-expired token`() {
+        val u = user().apply {
+            passwordResetToken = "tok"
+            passwordResetExpiresAt = java.time.LocalDateTime.now().plusHours(1)
+        }
+        whenever(userRepository.findByPasswordResetToken("tok")).thenReturn(u)
+
+        assertThat(useCase.isResetTokenValid("tok")).isTrue()
+    }
+
+    @Test
+    fun `isResetTokenValid false for an expired token`() {
+        val u = user().apply {
+            passwordResetToken = "tok"
+            passwordResetExpiresAt = java.time.LocalDateTime.now().minusMinutes(1)
+        }
+        whenever(userRepository.findByPasswordResetToken("tok")).thenReturn(u)
+
+        assertThat(useCase.isResetTokenValid("tok")).isFalse()
+    }
+
+    @Test
+    fun `isResetTokenValid false when token does not exist`() {
+        whenever(userRepository.findByPasswordResetToken(any())).thenReturn(null)
+
+        assertThat(useCase.isResetTokenValid("ghost")).isFalse()
+    }
+
     private fun user(
         email: String = "test@test.com",
         passwordHash: String = "hash",

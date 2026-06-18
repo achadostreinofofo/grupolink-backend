@@ -130,6 +130,14 @@ class AuthUseCase(
         }
     }
 
+    // Valida o token de reset sem alterar nada — usado pela tela de redefinição ao abrir,
+    // para avisar cedo (e oferecer novo link) quando o link já expirou.
+    fun isResetTokenValid(token: String): Boolean {
+        val user = userRepository.findByPasswordResetToken(token) ?: return false
+        val expiresAt = user.passwordResetExpiresAt ?: return false
+        return LocalDateTime.now().isBefore(expiresAt)
+    }
+
     @Transactional
     fun resetPassword(request: ResetPasswordRequest) {
         require(request.newPassword.length >= 8) { "Senha deve ter no mínimo 8 caracteres" }
