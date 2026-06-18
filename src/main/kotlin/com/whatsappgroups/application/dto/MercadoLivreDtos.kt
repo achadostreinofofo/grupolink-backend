@@ -66,7 +66,8 @@ data class MlPageProductData(
     val title: String? = null,
     val price: Double? = null,
     val originalPrice: Double? = null,
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val coupon: String? = null   // ex.: "Cupom 5% OFF" (benefício; ML não expõe código)
 )
 
 data class GenerateMessageRequest(

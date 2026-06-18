@@ -103,7 +103,8 @@ class MercadoLivreProductExtractorTest {
                 title = "Creatina Monohidratada 500g",
                 price = 69.9,
                 originalPrice = 104.9,
-                imageUrl = "https://http2.mlstatic.com/img.webp"
+                imageUrl = "https://http2.mlstatic.com/img.webp",
+                coupon = "Cupom 5% OFF"
             )
         )
 
@@ -113,6 +114,7 @@ class MercadoLivreProductExtractorTest {
         assertThat(p.price).isEqualTo(69.9)
         assertThat(p.originalPrice).isEqualTo(104.9)
         assertThat(p.imageUrl).isEqualTo("https://http2.mlstatic.com/img.webp")
+        assertThat(p.coupon).isEqualTo("Cupom 5% OFF")
     }
 
     @Test

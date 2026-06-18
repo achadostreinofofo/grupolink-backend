@@ -43,6 +43,7 @@ class MercadoLivreProductExtractor(
         var price: Double? = null
         var originalPrice: Double? = null
         var imageUrl: String? = null
+        var coupon: String? = null
 
         mlApiClient.getItem(mlbId, accessToken)?.let { item ->
             title = item.title.takeIf { it.isNotBlank() }
@@ -73,12 +74,16 @@ class MercadoLivreProductExtractor(
         // Último recurso (e única fonte para vitrines sociais): extrai título, preço, preço
         // riscado e imagem direto do HTML embutido. As APIs acima não resolvem o product_id de
         // afiliado das páginas /social/, mas a página traz todos esses dados.
-        if (title == null || price == null || imageUrl == null) {
+        // O cupom (e os dados de vitrine social) vêm do HTML embutido. Buscamos o HTML quando
+        // falta algo OU quando ainda não temos cupom — para também capturar o cupom de produtos
+        // resolvidos via API, sem custo extra para vitrines sociais (que já leem o HTML).
+        if (title == null || price == null || imageUrl == null || coupon == null) {
             mlApiClient.extractProductDataFromPage(resolvedUrl)?.let { page ->
                 if (title == null) title = page.title
                 if (price == null) price = page.price
                 if (originalPrice == null) originalPrice = page.originalPrice
                 if (imageUrl == null) imageUrl = page.imageUrl
+                if (coupon == null) coupon = page.coupon
             }
         }
 
@@ -87,7 +92,8 @@ class MercadoLivreProductExtractor(
             title         = finalTitle,
             price         = price,
             originalPrice = originalPrice,
-            imageUrl      = imageUrl
+            imageUrl      = imageUrl,
+            coupon        = coupon
         )
     }
 
