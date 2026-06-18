@@ -53,7 +53,7 @@ class AuthController(
     @PostMapping("/forgot-password")
     fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequest): ResponseEntity<Map<String, String>> {
         authUseCase.forgotPassword(request)
-        return ResponseEntity.ok(mapOf("message" to "Se os dados conferem, você receberá um e-mail com instruções."))
+        return ResponseEntity.ok(mapOf("message" to "Se houver uma conta com este e-mail, você receberá instruções para redefinir a senha."))
     }
 
     @PostMapping("/reset-password")

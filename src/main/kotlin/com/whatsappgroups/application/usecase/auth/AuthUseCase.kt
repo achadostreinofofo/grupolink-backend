@@ -110,17 +110,10 @@ class AuthUseCase(
 
     @Transactional
     fun forgotPassword(request: ForgotPasswordRequest) {
-        val formattedCpf = request.cpf
-            .replace(Regex("[^\\d]"), "")
-            .let { d ->
-                if (d.length == 11) "${d.substring(0,3)}.${d.substring(3,6)}.${d.substring(6,9)}-${d.substring(9)}"
-                else d
-            }
-
-        val user = userRepository.findByEmailAndCpf(request.email, formattedCpf)
+        val user = userRepository.findByEmail(request.email)
         // Não revelamos se o usuário existe — sempre retorna sucesso ao caller
         if (user == null) {
-            log.warn("Forgot password: no match for email=${request.email}")
+            log.warn("Forgot password: no account for email=${request.email}")
             return
         }
 

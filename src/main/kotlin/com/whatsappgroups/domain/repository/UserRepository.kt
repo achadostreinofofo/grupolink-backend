@@ -10,5 +10,4 @@ interface UserRepository : JpaRepository<User, UUID> {
     fun existsByCpf(cpf: String): Boolean
     fun findByEmailVerificationToken(token: String): User?
     fun findByPasswordResetToken(token: String): User?
-    fun findByEmailAndCpf(email: String, cpf: String): User?
 }
