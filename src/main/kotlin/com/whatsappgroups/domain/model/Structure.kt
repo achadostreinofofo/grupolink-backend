@@ -2,6 +2,7 @@ package com.whatsappgroups.domain.model
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.util.UUID
 
 @Entity
@@ -30,6 +31,18 @@ class Structure(
     // 0.80 = inicia preenchimento dos próximos grupos quando o atual atinge 80%
     @Column(nullable = false)
     var fillThreshold: Double = 0.80,
+
+    // Regras de agendamento (só para mensagens agendadas; envio instantâneo não é afetado).
+    // A grade de horários disponíveis vai de scheduleWindowStart a scheduleWindowEnd,
+    // de scheduleIntervalMinutes em scheduleIntervalMinutes.
+    @Column(name = "schedule_window_start", nullable = false)
+    var scheduleWindowStart: LocalTime = LocalTime.of(8, 0),
+
+    @Column(name = "schedule_window_end", nullable = false)
+    var scheduleWindowEnd: LocalTime = LocalTime.of(18, 0),
+
+    @Column(name = "schedule_interval_minutes", nullable = false)
+    var scheduleIntervalMinutes: Int = 5,
 
     @Column(nullable = false)
     var active: Boolean = true,

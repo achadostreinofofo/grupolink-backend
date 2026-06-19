@@ -6,7 +6,27 @@ data class CreateStructureRequest(
     @field:NotBlank val name: String,
     val description: String? = null,
     val maxMembersPerGroup: Int = 256,
-    val fillThreshold: Double = 0.80
+    val fillThreshold: Double = 0.80,
+    // Regras de agendamento (horas em "HH:mm"). Defaults: 08:00–18:00, 5 min.
+    val scheduleWindowStart: String = "08:00",
+    val scheduleWindowEnd: String = "18:00",
+    val scheduleIntervalMinutes: Int = 5
+)
+
+// Edição das regras de agendamento de uma estrutura existente.
+data class UpdateScheduleConfigRequest(
+    val scheduleWindowStart: String,
+    val scheduleWindowEnd: String,
+    val scheduleIntervalMinutes: Int
+)
+
+// Um horário da grade de agendamento de um dia.
+// status: AVAILABLE (livre) · TAKEN (já agendado) · PAST (já passou)
+data class ScheduleSlotResponse(
+    val time: String,        // "HH:mm"
+    val datetime: String,    // "yyyy-MM-ddTHH:mm" (horário de Brasília)
+    val available: Boolean,
+    val status: String
 )
 
 data class AddGroupRequest(
@@ -60,5 +80,8 @@ data class StructureResponse(
     val groupNamePrefix: String?,
     val nextGroupNumber: Int,
     val groupProfilePicUrl: String?,
-    val maxGroupsPerStructure: Int? = null   // null = ilimitado (plano Black / conta da plataforma)
+    val maxGroupsPerStructure: Int? = null,  // null = ilimitado (plano Black / conta da plataforma)
+    val scheduleWindowStart: String = "08:00",
+    val scheduleWindowEnd: String = "18:00",
+    val scheduleIntervalMinutes: Int = 5
 )
