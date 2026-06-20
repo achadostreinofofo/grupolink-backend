@@ -56,6 +56,10 @@ class AuthController(
         return ResponseEntity.ok(mapOf("message" to "Se houver uma conta com este e-mail, você receberá instruções para redefinir a senha."))
     }
 
+    @GetMapping("/reset-password/validate")
+    fun validateResetToken(@RequestParam token: String): ResponseEntity<Map<String, Boolean>> =
+        ResponseEntity.ok(mapOf("valid" to authUseCase.isResetTokenValid(token)))
+
     @PostMapping("/reset-password")
     fun resetPassword(@Valid @RequestBody request: ResetPasswordRequest): ResponseEntity<Map<String, String>> {
         authUseCase.resetPassword(request)

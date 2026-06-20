@@ -198,6 +198,35 @@ class AuthUseCaseTest {
     }
 
     @Test
+    fun `isResetTokenValid true for a non-expired token`() {
+        val u = user().apply {
+            passwordResetToken = "tok"
+            passwordResetExpiresAt = java.time.LocalDateTime.now().plusHours(1)
+        }
+        whenever(userRepository.findByPasswordResetToken("tok")).thenReturn(u)
+
+        assertThat(useCase.isResetTokenValid("tok")).isTrue()
+    }
+
+    @Test
+    fun `isResetTokenValid false for an expired token`() {
+        val u = user().apply {
+            passwordResetToken = "tok"
+            passwordResetExpiresAt = java.time.LocalDateTime.now().minusMinutes(1)
+        }
+        whenever(userRepository.findByPasswordResetToken("tok")).thenReturn(u)
+
+        assertThat(useCase.isResetTokenValid("tok")).isFalse()
+    }
+
+    @Test
+    fun `isResetTokenValid false when token does not exist`() {
+        whenever(userRepository.findByPasswordResetToken(any())).thenReturn(null)
+
+        assertThat(useCase.isResetTokenValid("ghost")).isFalse()
+    }
+
+    @Test
     fun `resetPassword troca a senha e marca passwordChangedAt (invalida tokens antigos)`() {
         val user = user().apply {
             passwordResetToken     = "tok"
