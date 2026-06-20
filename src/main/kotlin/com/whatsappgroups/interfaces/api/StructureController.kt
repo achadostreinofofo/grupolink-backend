@@ -6,6 +6,7 @@ import com.whatsappgroups.application.dto.GroupResponse
 import com.whatsappgroups.application.dto.ImportGroupsRequest
 import com.whatsappgroups.application.dto.ImportGroupsResponse
 import com.whatsappgroups.application.dto.StructureResponse
+import com.whatsappgroups.application.dto.UpdateScheduleConfigRequest
 import com.whatsappgroups.application.usecase.structure.StructureUseCase
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -48,6 +49,14 @@ class StructureController(private val structureUseCase: StructureUseCase) {
         structureUseCase.delete(UUID.fromString(user.username), id)
         return ResponseEntity.noContent().build()
     }
+
+    @PutMapping("/{id}/schedule-config")
+    fun updateScheduleConfig(
+        @AuthenticationPrincipal user: UserDetails,
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: UpdateScheduleConfigRequest
+    ): ResponseEntity<StructureResponse> =
+        ResponseEntity.ok(structureUseCase.updateScheduleConfig(UUID.fromString(user.username), id, request))
 
     @PostMapping("/{id}/groups")
     fun addGroup(

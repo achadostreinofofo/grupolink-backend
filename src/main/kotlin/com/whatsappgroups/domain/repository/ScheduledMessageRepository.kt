@@ -12,4 +12,7 @@ interface ScheduledMessageRepository : JpaRepository<ScheduledMessage, UUID> {
     fun findAllByOwnerAndStructureId(owner: User, structureId: UUID): List<ScheduledMessage>
     fun findAllByStatusAndScheduledAtBefore(status: MessageStatus, dateTime: LocalDateTime): List<ScheduledMessage>
     fun countByOwnerAndCreatedAtBetween(owner: User, start: LocalDateTime, end: LocalDateTime): Long
+    fun findAllByStructureIdAndStatusAndScheduledAtBetween(
+        structureId: UUID, status: MessageStatus, start: LocalDateTime, end: LocalDateTime
+    ): List<ScheduledMessage>
 }

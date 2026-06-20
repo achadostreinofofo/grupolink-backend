@@ -1,15 +1,18 @@
 package com.whatsappgroups.interfaces.api
 
 import com.whatsappgroups.application.dto.CreateScheduledMessageRequest
+import com.whatsappgroups.application.dto.ScheduleSlotResponse
 import com.whatsappgroups.application.dto.ScheduledMessageResponse
 import com.whatsappgroups.application.dto.UpdateScheduledMessageRequest
 import com.whatsappgroups.application.usecase.message.ScheduledMessageUseCase
 import jakarta.validation.Valid
+import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
 import java.util.UUID
 
 // ── Mensagens por estrutura ──────────────────────────────────────
@@ -35,6 +38,15 @@ class StructureMessageController(private val messageUseCase: ScheduledMessageUse
         @PathVariable structureId: UUID
     ): ResponseEntity<List<ScheduledMessageResponse>> =
         ResponseEntity.ok(messageUseCase.listByStructure(UUID.fromString(user.username), structureId))
+
+    // Grade de horários de agendamento de um dia (livre/ocupado/passado)
+    @GetMapping("/slots")
+    fun slots(
+        @AuthenticationPrincipal user: UserDetails,
+        @PathVariable structureId: UUID,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate
+    ): ResponseEntity<List<ScheduleSlotResponse>> =
+        ResponseEntity.ok(messageUseCase.getAvailableSlots(UUID.fromString(user.username), structureId, date))
 }
 
 data class SendNowRequest(val groupIds: List<String>? = null)

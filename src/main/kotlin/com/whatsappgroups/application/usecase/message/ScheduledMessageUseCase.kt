@@ -1,19 +1,25 @@
 package com.whatsappgroups.application.usecase.message
 
 import com.whatsappgroups.application.dto.CreateScheduledMessageRequest
+import com.whatsappgroups.application.dto.ScheduleSlotResponse
 import com.whatsappgroups.application.dto.ScheduledMessageResponse
 import com.whatsappgroups.application.dto.UpdateScheduledMessageRequest
 import com.whatsappgroups.application.usecase.whatsapp.BroadcastUseCase
 import com.whatsappgroups.application.dto.BroadcastMessageRequest
 import com.whatsappgroups.domain.model.MessageStatus
 import com.whatsappgroups.domain.model.ScheduledMessage
+import com.whatsappgroups.domain.model.Structure
 import com.whatsappgroups.domain.repository.ScheduledMessageRepository
 import com.whatsappgroups.domain.repository.StructureRepository
 import com.whatsappgroups.domain.repository.UserRepository
 import com.whatsappgroups.infrastructure.config.OwnerAccount
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @Service
@@ -48,6 +54,12 @@ class ScheduledMessageUseCase(
                 .also { s -> if (s.owner.id != userId) throw IllegalAccessException("Acesso negado") }
         }
 
+        // Agendamento (scheduledAt != null) deve cair num slot válido da estrutura.
+        // Envio instantâneo (sendNow) não passa por aqui e não é afetado.
+        if (request.scheduledAt != null && structure != null) {
+            validateScheduleSlot(structure, request.scheduledAt)
+        }
+
         val status = if (request.scheduledAt != null) MessageStatus.PENDING else MessageStatus.DRAFT
 
         val message = messageRepository.save(
@@ -71,6 +83,10 @@ class ScheduledMessageUseCase(
 
         if (message.status == MessageStatus.CANCELLED) {
             throw IllegalStateException("Não é possível editar uma mensagem cancelada")
+        }
+
+        if (request.scheduledAt != null) {
+            message.structure?.let { validateScheduleSlot(it, request.scheduledAt, excludeMessageId = message.id) }
         }
 
         message.title       = request.title
@@ -146,6 +162,64 @@ class ScheduledMessageUseCase(
         messageRepository.delete(message)
     }
 
+    // Grade de horários de um dia para a estrutura: AVAILABLE (livre) · TAKEN (já agendado) · PAST.
+    fun getAvailableSlots(userId: UUID, structureId: UUID, date: LocalDate): List<ScheduleSlotResponse> {
+        val structure = structureRepository.findById(structureId)
+            .orElseThrow { NoSuchElementException("Estrutura não encontrada") }
+        if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
+
+        val interval = structure.scheduleIntervalMinutes.toLong()
+        val now = LocalDateTime.now()
+
+        val taken = messageRepository.findAllByStructureIdAndStatusAndScheduledAtBetween(
+            structureId, MessageStatus.PENDING, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+        ).mapNotNull { it.scheduledAt?.truncatedTo(ChronoUnit.MINUTES) }.toSet()
+
+        val slots = mutableListOf<ScheduleSlotResponse>()
+        var t = structure.scheduleWindowStart
+        while (t.isBefore(structure.scheduleWindowEnd)) {
+            val dt = LocalDateTime.of(date, t)
+            val status = when {
+                !dt.isAfter(now)    -> "PAST"
+                taken.contains(dt)  -> "TAKEN"
+                else                -> "AVAILABLE"
+            }
+            slots.add(ScheduleSlotResponse(
+                time      = t.format(HHMM),
+                datetime  = dt.toString(),
+                available = status == "AVAILABLE",
+                status    = status
+            ))
+            val next = t.plusMinutes(interval)
+            if (!next.isAfter(t)) break   // protege contra virada de meia-noite
+            t = next
+        }
+        return slots
+    }
+
+    // Garante que o horário escolhido para agendamento cabe na grade da estrutura.
+    private fun validateScheduleSlot(structure: Structure, scheduledAt: LocalDateTime, excludeMessageId: UUID? = null) {
+        if (!scheduledAt.isAfter(LocalDateTime.now()))
+            throw IllegalArgumentException("O horário escolhido já passou. Selecione um horário futuro.")
+
+        val time  = scheduledAt.toLocalTime()
+        val start = structure.scheduleWindowStart
+        val end   = structure.scheduleWindowEnd
+        if (time.isBefore(start) || !time.isBefore(end))
+            throw IllegalArgumentException("O horário deve estar entre ${start.format(HHMM)} e ${end.format(HHMM)}.")
+
+        val minutesFromStart = Duration.between(start, time).toMinutes()
+        if (minutesFromStart % structure.scheduleIntervalMinutes != 0L)
+            throw IllegalArgumentException("O horário deve respeitar o intervalo de ${structure.scheduleIntervalMinutes} minutos definido na estrutura.")
+
+        val slot = scheduledAt.truncatedTo(ChronoUnit.MINUTES)
+        val occupied = messageRepository.findAllByStructureIdAndStatusAndScheduledAtBetween(
+            structure.id!!, MessageStatus.PENDING, slot, slot.plusMinutes(1)
+        ).any { it.id != excludeMessageId && it.scheduledAt?.truncatedTo(ChronoUnit.MINUTES) == slot }
+        if (occupied)
+            throw IllegalArgumentException("Já existe uma mensagem agendada para este horário nesta estrutura.")
+    }
+
     private fun findOwned(userId: UUID, messageId: UUID): ScheduledMessage {
         val message = messageRepository.findById(messageId)
             .orElseThrow { NoSuchElementException("Mensagem não encontrada") }
@@ -165,4 +239,8 @@ class ScheduledMessageUseCase(
         structureId   = structure?.id?.toString(),
         structureName = structure?.name
     )
+
+    private companion object {
+        val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    }
 }

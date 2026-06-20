@@ -17,6 +17,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 @Service
@@ -46,6 +49,8 @@ class StructureUseCase(
             )
         }
 
+        val (winStart, winEnd) = parseScheduleWindow(request.scheduleWindowStart, request.scheduleWindowEnd, request.scheduleIntervalMinutes)
+
         val slug = generateUniqueSlug()
         val structure = structureRepository.save(
             Structure(
@@ -54,11 +59,39 @@ class StructureUseCase(
                 slug = slug,
                 description = request.description,
                 maxMembersPerGroup = request.maxMembersPerGroup,
-                fillThreshold = request.fillThreshold
+                fillThreshold = request.fillThreshold,
+                scheduleWindowStart = winStart,
+                scheduleWindowEnd = winEnd,
+                scheduleIntervalMinutes = request.scheduleIntervalMinutes
             )
         )
 
         return structure.toResponse()
+    }
+
+    @Transactional
+    fun updateScheduleConfig(userId: UUID, structureId: UUID, request: UpdateScheduleConfigRequest): StructureResponse {
+        val structure = structureRepository.findById(structureId)
+            .orElseThrow { NoSuchElementException("Estrutura não encontrada") }
+        if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
+
+        val (winStart, winEnd) = parseScheduleWindow(request.scheduleWindowStart, request.scheduleWindowEnd, request.scheduleIntervalMinutes)
+        structure.scheduleWindowStart     = winStart
+        structure.scheduleWindowEnd       = winEnd
+        structure.scheduleIntervalMinutes = request.scheduleIntervalMinutes
+        structure.updatedAt               = LocalDateTime.now()
+        return structure.toResponse()
+    }
+
+    // Valida e converte as horas "HH:mm". Garante janela coerente e intervalo razoável.
+    private fun parseScheduleWindow(start: String, end: String, intervalMinutes: Int): Pair<LocalTime, LocalTime> {
+        require(intervalMinutes in 1..720) { "O intervalo entre mensagens deve ser entre 1 e 720 minutos." }
+        val winStart = runCatching { LocalTime.parse(start) }
+            .getOrElse { throw IllegalArgumentException("Hora de início inválida (use HH:mm).") }
+        val winEnd = runCatching { LocalTime.parse(end) }
+            .getOrElse { throw IllegalArgumentException("Hora de fim inválida (use HH:mm).") }
+        require(winStart.isBefore(winEnd)) { "A hora de início deve ser anterior à hora de fim." }
+        return winStart to winEnd
     }
 
     private fun generateUniqueSlug(): String {
@@ -301,8 +334,15 @@ class StructureUseCase(
             val limit = if (OwnerAccount.isOwner(owner.email)) Int.MAX_VALUE
                         else owner.plan.maxGroupsPerStructure
             limit.takeIf { it != Int.MAX_VALUE }
-        }
+        },
+        scheduleWindowStart     = scheduleWindowStart.format(HHMM),
+        scheduleWindowEnd       = scheduleWindowEnd.format(HHMM),
+        scheduleIntervalMinutes = scheduleIntervalMinutes
     )
+
+    private companion object {
+        val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    }
 
     private fun WhatsappGroup.toResponse() = GroupResponse(
         id              = id.toString(),
