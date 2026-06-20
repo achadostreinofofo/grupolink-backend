@@ -177,7 +177,19 @@ class MercadoLivreApiClient(
             Regex(""""previous_price"\s*:\s*\{\s*"value"\s*:\s*([0-9.]+)""").find(it)?.groupValues?.get(1)?.toDoubleOrNull()
         }
 
-        return MlPageProductData(title = title, price = price, originalPrice = originalPrice, imageUrl = imageUrl)
+        // Cupom do produto compartilhado: primeiro bloco "type":"coupon". O ML não expõe código,
+        // só o texto do benefício (ex.: "Cupom 5% OFF"). Remove placeholders de ícone/{amount} e
+        // só aceita se sobrar um valor concreto (dígito), descartando textos genéricos.
+        val coupon = Regex(""""type"\s*:\s*"coupon"\s*,\s*"text"\s*:\s*"([^"]+)"""")
+            .find(body)?.groupValues?.get(1)
+            ?.replace(Regex("""\{[^}]*\}"""), "")
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it.contains(Regex("""\d""")) }
+
+        return MlPageProductData(
+            title = title, price = price, originalPrice = originalPrice, imageUrl = imageUrl, coupon = coupon
+        )
     }
 
     private fun extractOgTitleFromHtml(body: String): String? =

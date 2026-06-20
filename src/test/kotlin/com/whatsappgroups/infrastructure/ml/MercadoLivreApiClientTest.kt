@@ -83,6 +83,7 @@ class MercadoLivreApiClientTest {
             <meta property="og:image" content="https://http2.mlstatic.com/D_NQ_NP_602304-MLA.webp"/>
             {"type":"title","title":{"text":"Creatina Monohidratada 500g"}},
             {"type":"price","id":"price","column":1,"price":{"previous_price":{"value":104.9,"currency":"BRL"},"current_price":{"value":69.9,"currency":"BRL"},"discount_label":{"text":"33% OFF"}}},
+            {"type":"promotions","id":"promotions","promotions":[{"type":"coupon","text":"{bf_v6_coupons} Cupom 5% OFF","values":[]}]},
             {"type":"price","id":"price","column":1,"price":{"previous_price":{"value":34.9},"current_price":{"value":30.9}}}
         """.trimIndent()
 
@@ -92,6 +93,14 @@ class MercadoLivreApiClientTest {
         assertThat(data.imageUrl).isEqualTo("https://http2.mlstatic.com/D_NQ_NP_602304-MLA.webp")
         assertThat(data.price).isEqualTo(69.9)
         assertThat(data.originalPrice).isEqualTo(104.9)
+        // cupom: placeholder de ícone removido, benefício preservado
+        assertThat(data.coupon).isEqualTo("Cupom 5% OFF")
+    }
+
+    @Test
+    fun `parseProductDataFromHtml ignores coupon without a concrete value`() {
+        val html = """{"type":"coupon","text":"{bf_v6_coupons} Cupom {amount} OFF"}"""
+        assertThat(client.parseProductDataFromHtml(html).coupon).isNull()
     }
 
     @Test

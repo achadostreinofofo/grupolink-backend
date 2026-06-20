@@ -75,6 +75,32 @@ class GenerateMessageFromLinkUseCaseTest {
     }
 
     @Test
+    fun `appends coupon between price and link when available`() {
+        setup()
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = 99.9, imageUrl = null, coupon = "Cupom 5% OFF"))
+
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
+
+        assertThat(res.content).contains("🎟️ Cupom 5% OFF no Mercado Livre")
+        // ordem: preço → cupom → link
+        assertThat(res.content.indexOf("Cupom 5% OFF")).isGreaterThan(res.content.indexOf("Por R$ 49,90"))
+        assertThat(res.content.indexOf("https://produto.mercadolivre.com.br/MLB-123"))
+            .isGreaterThan(res.content.indexOf("Cupom 5% OFF"))
+    }
+
+    @Test
+    fun `does not add coupon line when there is no coupon`() {
+        setup()
+        whenever(extractor.extract(any(), eq(userId)))
+            .thenReturn(ExtractedProduct(title = "Camiseta", price = 49.9, originalPrice = null, imageUrl = null, coupon = null))
+
+        val res = useCase.generate(userId, GenerateMessageRequest("https://produto.mercadolivre.com.br/MLB-123"))
+
+        assertThat(res.content).doesNotContain("🎟️")
+    }
+
+    @Test
     fun `appends only Por when there is a single price (no discount)`() {
         setup()
         whenever(extractor.extract(any(), eq(userId)))

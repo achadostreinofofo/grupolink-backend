@@ -9,7 +9,8 @@ data class ExtractedProduct(
     val title: String,
     val price: Double?,
     val originalPrice: Double?,
-    val imageUrl: String?
+    val imageUrl: String?,
+    val coupon: String? = null   // ex.: "Cupom 5% OFF" — benefício de cupom, quando disponível
 )
 
 // Strategy: isola a obtenção dos dados de produto por marketplace (Mercado Livre, Amazon, ...).

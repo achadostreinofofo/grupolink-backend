@@ -2,7 +2,7 @@
 package com.whatsappgroups.usecase
 
 import com.whatsappgroups.application.dto.AddGroupRequest
-import com.whatsappgroups.application.dto.ImportGroupRequest
+import com.whatsappgroups.application.dto.ImportGroupsRequest
 import com.whatsappgroups.application.usecase.structure.StructureUseCase
 import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.domain.model.*
@@ -66,82 +66,91 @@ class ImportGroupUseCaseTest {
         whenever(groupRepo.save(any()) as WhatsappGroup?).thenReturn(group)
     }
 
-    // ──────────────────────────── importGroup ────────────────────────────
+    // ──────────────────────────── importGroups ────────────────────────────
 
-    @Test
-    fun `importGroup - sucesso salva grupo como ACTIVE com jid e inviteLink`() {
-        val jid = "111@g.us"
-        val link = "https://chat.whatsapp.com/ABC"
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
-            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 10,
-                inviteLink = link, profilePicUrl = "https://pic.url/g.jpg")
-        )
-        stubSave(savedGroup("Treino Fofo #1", jid, link))
-
-        val result = useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
-
-        assert(result.status == "ACTIVE")
-        assert(result.whatsappGroupId == jid)
-        verify(groupRepo).save(argThat { status == GroupStatus.ACTIVE && whatsappGroupId == jid })
-        verify(whatsappClient, never()).getGroupInviteLink(any(), any())
+    // save() retorna o próprio argumento, para a resposta refletir os valores gravados
+    private fun stubSaveEcho() {
+        whenever(groupRepo.save(any()) as WhatsappGroup?).thenAnswer { it.getArgument<WhatsappGroup>(0) }
     }
 
     @Test
-    fun `importGroup - usa inviteLink da request quando fornecido`() {
-        val jid = "222@g.us"
-        val customLink = "https://chat.whatsapp.com/CUSTOM"
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
-            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 5, inviteLink = null)
+    fun `importGroups - importa multiplos como ACTIVE com memberCount e sortOrder incremental`() {
+        whenever(whatsappClient.getGroupInfo("sess-1", "111@g.us")).thenReturn(
+            WebServiceGroupDetail(groupId = "111@g.us", name = "Grupo A", participants = 10, inviteLink = "https://chat.whatsapp.com/A")
         )
-        stubSave(savedGroup("Treino Fofo #1", jid, customLink))
+        whenever(whatsappClient.getGroupInfo("sess-1", "222@g.us")).thenReturn(
+            WebServiceGroupDetail(groupId = "222@g.us", name = "Grupo B", participants = 20, inviteLink = "https://chat.whatsapp.com/B")
+        )
+        stubSaveEcho()
 
-        useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid, inviteLink = customLink))
+        val result = useCase.importGroups(ownerId, structureId,
+            ImportGroupsRequest(whatsappGroupIds = listOf("111@g.us", "222@g.us")))
 
-        verify(groupRepo).save(argThat { inviteLink == customLink })
-        verify(whatsappClient, never()).getGroupInviteLink(any(), any())
+        assert(result.imported.size == 2)
+        assert(result.failed.isEmpty())
+        verify(groupRepo).save(argThat { whatsappGroupId == "111@g.us" && memberCount == 10 && sortOrder == 0 && status == GroupStatus.ACTIVE })
+        verify(groupRepo).save(argThat { whatsappGroupId == "222@g.us" && memberCount == 20 && sortOrder == 1 })
     }
 
     @Test
-    fun `importGroup - busca inviteLink automaticamente quando groupInfo e request sao null`() {
-        val jid = "333@g.us"
-        val autoLink = "https://chat.whatsapp.com/AUTO"
-        whenever(whatsappClient.getGroupInfo("sess-1", jid)).thenReturn(
-            WebServiceGroupDetail(groupId = jid, name = "Treino Fofo #1", participants = 3, inviteLink = null)
+    fun `importGroups - maxMembers nunca fica abaixo do grupo mais cheio importado`() {
+        whenever(whatsappClient.getGroupInfo("sess-1", "111@g.us")).thenReturn(
+            WebServiceGroupDetail(groupId = "111@g.us", name = "A", participants = 300, inviteLink = "l1")
         )
-        whenever(whatsappClient.getGroupInviteLink("sess-1", jid)).thenReturn(autoLink)
-        stubSave(savedGroup("Treino Fofo #1", jid, autoLink))
+        stubSaveEcho()
 
-        useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = jid))
+        // pede 256, mas o grupo já tem 300 → limite efetivo = 300
+        useCase.importGroups(ownerId, structureId,
+            ImportGroupsRequest(whatsappGroupIds = listOf("111@g.us"), maxMembersPerGroup = 256))
 
-        verify(whatsappClient).getGroupInviteLink("sess-1", jid)
+        assert(structure.maxMembersPerGroup == 300)
+        verify(groupRepo).save(argThat { maxMembers == 300 })
     }
 
     @Test
-    fun `importGroup - lanca erro se getGroupInfo retorna null`() {
-        whenever(whatsappClient.getGroupInfo(any(), any())).thenReturn(null)
+    fun `importGroups - falha parcial reporta o que falhou e importa os demais`() {
+        whenever(whatsappClient.getGroupInfo("sess-1", "ok@g.us")).thenReturn(
+            WebServiceGroupDetail(groupId = "ok@g.us", name = "OK", participants = 5, inviteLink = "l")
+        )
+        whenever(whatsappClient.getGroupInfo("sess-1", "bad@g.us")).thenReturn(null)
+        stubSaveEcho()
 
-        assertThrows<IllegalStateException> {
-            useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = "000@g.us"))
+        val result = useCase.importGroups(ownerId, structureId,
+            ImportGroupsRequest(whatsappGroupIds = listOf("ok@g.us", "bad@g.us")))
+
+        assert(result.imported.size == 1)
+        assert(result.failed.size == 1 && result.failed.first().whatsappGroupId == "bad@g.us")
+    }
+
+    @Test
+    fun `importGroups - busca inviteLink automaticamente quando ausente`() {
+        whenever(whatsappClient.getGroupInfo("sess-1", "333@g.us")).thenReturn(
+            WebServiceGroupDetail(groupId = "333@g.us", name = "C", participants = 3, inviteLink = null)
+        )
+        whenever(whatsappClient.getGroupInviteLink("sess-1", "333@g.us")).thenReturn("https://chat.whatsapp.com/AUTO")
+        stubSaveEcho()
+
+        useCase.importGroups(ownerId, structureId, ImportGroupsRequest(whatsappGroupIds = listOf("333@g.us")))
+
+        verify(whatsappClient).getGroupInviteLink("sess-1", "333@g.us")
+    }
+
+    @Test
+    fun `importGroups - excede o limite de grupos do plano lanca erro`() {
+        // owner FREE permite 5 grupos/estrutura — tentar 6 deve falhar
+        val ids = (1..6).map { "$it@g.us" }
+        assertThrows<IllegalArgumentException> {
+            useCase.importGroups(ownerId, structureId, ImportGroupsRequest(whatsappGroupIds = ids))
         }
     }
 
     @Test
-    fun `importGroup - lanca erro se estrutura ja tem grupo ativo`() {
-        whenever(groupRepo.findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE))
-            .thenReturn(listOf(savedGroup("G #1")))
-
-        assertThrows<IllegalStateException> {
-            useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = "444@g.us"))
-        }
-    }
-
-    @Test
-    fun `importGroup - lanca erro se nao ha sessao autenticada`() {
+    fun `importGroups - lanca erro se nao ha sessao autenticada`() {
         whenever(sessionRepo.findFirstByOwnerAndStatus(owner, WebSessionStatus.AUTHENTICATED))
             .thenReturn(Optional.empty())
 
         assertThrows<IllegalStateException> {
-            useCase.importGroup(ownerId, structureId, ImportGroupRequest(whatsappGroupId = "555@g.us"))
+            useCase.importGroups(ownerId, structureId, ImportGroupsRequest(whatsappGroupIds = listOf("555@g.us")))
         }
     }
 

@@ -11,6 +11,8 @@ import com.whatsappgroups.domain.repository.WhatsappGroupRepository
 import com.whatsappgroups.domain.model.WebSessionStatus
 import com.whatsappgroups.application.usecase.whatsapp.ConnectedAccountsService
 import com.whatsappgroups.infrastructure.whatsapp.WhatsappWebServiceClient
+import com.whatsappgroups.infrastructure.whatsapp.WebServiceGroupDetail
+import com.whatsappgroups.infrastructure.config.OwnerAccount
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -193,20 +195,26 @@ class StructureUseCase(
     }
 
     @Transactional
-    fun importGroup(userId: UUID, structureId: UUID, request: ImportGroupRequest): GroupResponse {
+    fun importGroups(userId: UUID, structureId: UUID, request: ImportGroupsRequest): ImportGroupsResponse {
         val structure = structureRepository.findById(structureId)
             .orElseThrow { NoSuchElementException("Estrutura não encontrada") }
 
         if (structure.owner.id != userId) throw IllegalAccessException("Acesso negado")
 
-        // Apenas o primeiro grupo pode ser importado manualmente
-        val hasActiveGroups = groupRepository
+        val groupIds = request.whatsappGroupIds.distinct()
+        require(groupIds.isNotEmpty()) { "Selecione ao menos um grupo para importar." }
+
+        // Respeita o limite de grupos por estrutura do plano
+        val activeGroups = groupRepository
             .findAllByStructureAndStatusOrderBySortOrderAsc(structure, GroupStatus.ACTIVE)
-            .isNotEmpty()
-        if (hasActiveGroups) throw IllegalStateException(
-            "Apenas o primeiro grupo pode ser importado manualmente. " +
-            "Os grupos seguintes são criados automaticamente."
-        )
+        val maxGroups = if (OwnerAccount.isOwner(structure.owner.email)) Int.MAX_VALUE
+                        else structure.owner.plan.maxGroupsPerStructure
+        if (activeGroups.size + groupIds.size > maxGroups) {
+            throw IllegalArgumentException(
+                "Seu plano ${structure.owner.plan.name} permite no máximo $maxGroups grupo(s) por estrutura. " +
+                "Esta estrutura já tem ${activeGroups.size} e você tentou importar ${groupIds.size}."
+            )
+        }
 
         val session = sessionRepository
             .findFirstByOwnerAndStatus(structure.owner, WebSessionStatus.AUTHENTICATED)
@@ -214,52 +222,66 @@ class StructureUseCase(
                 IllegalStateException("Nenhuma sessão WhatsApp autenticada. Conecte uma conta em WhatsApp → QR Code.")
             }
 
-        // Busca info e invite link do grupo via whatsapp-service
-        val groupInfo = whatsappWebClient.getGroupInfo(session.sessionId, request.whatsappGroupId)
-            ?: throw IllegalStateException("Não foi possível obter informações do grupo '${request.whatsappGroupId}'. Verifique se a sessão WhatsApp está ativa.")
-        val inviteLink = request.inviteLink
-            ?: groupInfo.inviteLink
-            ?: whatsappWebClient.getGroupInviteLink(session.sessionId, request.whatsappGroupId)
-
-        // Aplica configurações do usuário (se fornecidas) na estrutura
-        request.maxMembersPerGroup?.let { max ->
-            require(max in groupInfo.participants..1024) {
-                "maxMembersPerGroup deve ser entre ${groupInfo.participants} (participantes atuais) e 1024"
+        // 1. Busca info de cada grupo; falhas individuais não abortam o lote
+        data class Resolved(val info: WebServiceGroupDetail, val inviteLink: String?)
+        val resolved = mutableListOf<Resolved>()
+        val failed   = mutableListOf<FailedImport>()
+        for (gid in groupIds) {
+            val info = whatsappWebClient.getGroupInfo(session.sessionId, gid)
+            if (info == null) {
+                failed.add(FailedImport(gid, "Não foi possível obter as informações do grupo."))
+                continue
             }
-            structure.maxMembersPerGroup = max
+            val link = info.inviteLink ?: whatsappWebClient.getGroupInviteLink(session.sessionId, gid)
+            resolved.add(Resolved(info, link))
         }
+
+        if (resolved.isEmpty()) {
+            return ImportGroupsResponse(imported = emptyList(), failed = failed)
+        }
+
+        // 2. Limite de membros é único por estrutura e nunca menor que o grupo mais cheio importado
+        val maxParticipants = resolved.maxOf { it.info.participants }
+        val chosenMax       = request.maxMembersPerGroup ?: structure.maxMembersPerGroup
+        structure.maxMembersPerGroup = maxOf(chosenMax, maxParticipants)
         request.fillThreshold?.let { threshold ->
             require(threshold in 0.10..0.99) { "fillThreshold deve ser entre 10% e 99%" }
             structure.fillThreshold = threshold
         }
 
-        val isFirstGroup = structure.groupNamePrefix == null
-
-        if (isFirstGroup) {
-            structure.groupNamePrefix    = groupInfo.name.substringBeforeLast(" #").trim()
+        // 3. O primeiro grupo da estrutura define prefixo/foto usados na numeração futura
+        if (structure.groupNamePrefix == null) {
+            val first = resolved.first().info
+            structure.groupNamePrefix    = first.name.substringBeforeLast(" #").trim()
             structure.nextGroupNumber    = 2
-            structure.groupProfilePicUrl = groupInfo.profilePicUrl
+            structure.groupProfilePicUrl = first.profilePicUrl
         }
 
-        val group = groupRepository.save(
-            WhatsappGroup(
-                structure       = structure,
-                name            = groupInfo.name,
-                whatsappGroupId = request.whatsappGroupId,
-                inviteLink      = inviteLink,
-                maxMembers      = structure.maxMembersPerGroup,
-                sortOrder       = structure.groups.size,
-                status          = GroupStatus.ACTIVE
+        // 4. Cria os grupos na ordem de seleção, gravando memberCount (essencial p/ round-robin
+        //    e auto-criação: sem isso todos pareceriam vazios e a distribuição sairia errada)
+        var order = structure.groups.size
+        val imported = resolved.map { r ->
+            val group = groupRepository.save(
+                WhatsappGroup(
+                    structure       = structure,
+                    name            = r.info.name,
+                    whatsappGroupId = r.info.groupId,
+                    inviteLink      = r.inviteLink,
+                    maxMembers      = structure.maxMembersPerGroup,
+                    memberCount     = r.info.participants,
+                    sortOrder       = order++,
+                    status          = GroupStatus.ACTIVE
+                )
             )
-        )
+            connectedAccounts.addOtherAccountsToGroup(structure.owner, session.sessionId, r.info.groupId)
+            log.info(
+                "Grupo importado: '${group.name}' (jid=${r.info.groupId}, membros=${r.info.participants}, " +
+                "maxMembers=${structure.maxMembersPerGroup})"
+            )
+            group.toResponse()
+        }
 
-        log.info(
-            "Grupo importado: '${group.name}' (jid=${request.whatsappGroupId}, " +
-            "maxMembers=${structure.maxMembersPerGroup}, fillThreshold=${structure.fillThreshold})"
-        )
-        // Adiciona as demais contas conectadas do usuário ao grupo importado
-        connectedAccounts.addOtherAccountsToGroup(structure.owner, session.sessionId, request.whatsappGroupId)
-        return group.toResponse()
+        return ImportGroupsResponse(imported = imported, failed = failed)
     }
 
     private fun Structure.toResponse() = StructureResponse(
@@ -274,7 +296,12 @@ class StructureUseCase(
         smartLink          = "$baseUrl/r/$slug",
         groupNamePrefix    = groupNamePrefix,
         nextGroupNumber    = nextGroupNumber,
-        groupProfilePicUrl = groupProfilePicUrl
+        groupProfilePicUrl = groupProfilePicUrl,
+        maxGroupsPerStructure = run {
+            val limit = if (OwnerAccount.isOwner(owner.email)) Int.MAX_VALUE
+                        else owner.plan.maxGroupsPerStructure
+            limit.takeIf { it != Int.MAX_VALUE }
+        }
     )
 
     private fun WhatsappGroup.toResponse() = GroupResponse(
