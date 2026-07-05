@@ -16,6 +16,9 @@ class JwtAuthenticationFilter(
     private val userDetailsService: UserDetailsServiceImpl
 ) : OncePerRequestFilter() {
 
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean =
+        request.requestURI.startsWith("/api/admin/")
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
