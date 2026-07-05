@@ -27,6 +27,19 @@ class JwtTokenProvider(
             .signWith(key)
             .compact()
 
+    fun generateAdminToken(adminId: UUID): String =
+        Jwts.builder()
+            .subject(adminId.toString())
+            .claim("role", "ADMIN")
+            .issuedAt(Date())
+            .expiration(Date(System.currentTimeMillis() + expirationMs))
+            .signWith(key)
+            .compact()
+
+    fun extractRole(token: String): String? = runCatching {
+        parseClaims(token)["role"] as? String
+    }.getOrNull()
+
     fun extractUserId(token: String): UUID? = runCatching {
         UUID.fromString(parseClaims(token).subject)
     }.getOrNull()
