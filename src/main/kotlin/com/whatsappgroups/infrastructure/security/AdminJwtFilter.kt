@@ -3,6 +3,9 @@ package com.whatsappgroups.infrastructure.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
@@ -34,6 +37,11 @@ class AdminJwtFilter(
         val adminId = jwtTokenProvider.extractUserId(token)
         if (adminId != null) {
             request.setAttribute("adminId", adminId.toString())
+            val auth = UsernamePasswordAuthenticationToken(
+                adminId.toString(), null,
+                listOf(SimpleGrantedAuthority("ROLE_ADMIN"))
+            )
+            SecurityContextHolder.getContext().authentication = auth
         }
 
         filterChain.doFilter(request, response)
