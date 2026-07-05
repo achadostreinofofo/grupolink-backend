@@ -1,11 +1,12 @@
 package com.whatsappgroups.domain.repository
 
+import com.whatsappgroups.domain.model.User
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import java.math.BigDecimal
-import java.time.LocalDateTime
+import java.util.UUID
 
-interface AnalyticsRepository : JpaRepository<Any, String> {
+interface AnalyticsRepository : JpaRepository<User, UUID> {
     @Query(value = """
         SELECT plan, COUNT(*) as count
         FROM users
