@@ -99,6 +99,10 @@ app:
     region: ${SES_REGION:${S3_REGION:us-east-1}}
     from: ${SES_FROM_EMAIL:noreply@redirectgrupo.com.br}
 
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+
   contact:
     email: ${CONTACT_EMAIL:contato@redirectgrupo.com.br}
 

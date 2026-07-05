@@ -25,6 +25,7 @@ import java.time.Duration
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthenticationFilter,
+    private val adminJwtFilter: AdminJwtFilter,
     private val oauth2SuccessHandler: OAuth2SuccessHandler,
     @Value("\${app.oauth2.google.client-id:}") private val googleClientId: String
 ) {
@@ -47,6 +48,7 @@ class SecurityConfig(
             }
             .authorizeHttpRequests { auth ->
                 auth
+                    .requestMatchers("/api/admin/auth/login").permitAll()
                     .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
                     .requestMatchers("/api/auth/verify-email", "/api/auth/resend-verification", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/reset-password/validate").permitAll()
                     .requestMatchers("/api/security/public-key").permitAll()
@@ -73,6 +75,7 @@ class SecurityConfig(
                     }
                 }
             }
+            .addFilterBefore(adminJwtFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         // Só ativa Google OAuth se o client-id estiver configurado
