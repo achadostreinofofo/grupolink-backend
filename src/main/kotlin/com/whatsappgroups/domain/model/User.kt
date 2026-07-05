@@ -77,6 +77,9 @@ class User(
     val structures: MutableList<Structure> = mutableListOf(),
 
     @Column(nullable = false)
+    var isAdmin: Boolean = false,
+
+    @Column(nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
     @Column(nullable = false)
