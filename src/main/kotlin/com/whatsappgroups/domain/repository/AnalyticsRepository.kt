@@ -64,7 +64,10 @@ interface AnalyticsRepository : JpaRepository<User, UUID> {
     fun countInactiveUsers30Days(): Long
 
     @Query(value = """
-        SELECT COALESCE(SUM(s.amount), 0) / NULLIF(COUNT(DISTINCT s.owner_id), 0) as arpu
+        SELECT COALESCE(
+            COALESCE(SUM(s.amount), 0) / NULLIF(COUNT(DISTINCT s.owner_id), 0),
+            0
+        ) as arpu
         FROM subscriptions s
         WHERE s.status = 'ACTIVE'
         AND s.period_end_date > NOW()
